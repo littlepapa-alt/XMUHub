@@ -44,3 +44,5 @@ tail -n 20000 /www/wwwlogs/xmu.vintces.icu.timing.log | awk '{for(i=1;i<=NF;i++)
 ```
 
 `rt` 远大于 `ut`：慢在网络或访问者那边；`ut` 大：慢在程序（比如在排队写数据库）。
+
+`0.default.conf` 替换宝塔的默认站点（`/www/server/panel/vhost/nginx/0.default.conf`，手动安装）：不认识的域名或者直接访问 IP 的请求，HTTPS 握手直接拒绝，HTTP 不回应（444）。2026-10-18 的攻击就是 `GET /`、`Host: <IP>`。
