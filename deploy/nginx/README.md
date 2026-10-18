@@ -5,7 +5,7 @@ xmu.vintces.icu 经 Cloudflare 代理（DNS 橙色云），其他子域名都是
 
 | 文件 | 装到 | 作用 |
 |---|---|---|
-| `0.xmuhub-limits.conf` | `/www/server/panel/vhost/nginx/`（http 级） | 限流区：页面和接口按访问者 IP 每秒 10 次，静态文件不计；耗时日志的格式 |
+| `0.xmuhub-limits.conf` | `/www/server/panel/vhost/nginx/`（http 级） | 限流区：xmu 的页面和接口按访问者 IP 每秒 10 次，静态文件不计；其他直连站点（仅 DNS）按 IP 每秒 20 次、瞬时可多 200 次，超出返回 429 并记进各站点的 error log（Cloudflare 和本机不计）；耗时日志的格式 |
 | `logrotate-xmuhub-timing` | `/etc/logrotate.d/xmuhub-timing` | 耗时日志每天轮转，留 7 天 |
 | `xmuhub-cloudflare.conf` | `/www/server/panel/vhost/nginx/extension/xmu.vintces.icu/`（站点级） | 只信任 Cloudflare 网段发来的 `CF-Connecting-IP` 作为真实 IP；启用限流（瞬时可多 80 次，超出返回 429） |
 
