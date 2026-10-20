@@ -1,18 +1,18 @@
 {
-  "name": "我的学院资料库",
+  "name": "吉大电子资料库",
   "subtitle": "学院课程资料共享平台",
-  "school": "我的学院",
-  "school_short": "学院",
-  "description": "我的学院课程资料共享平台，按年级和课程整理考试资料、课程笔记、课件和实验资料。",
-  "slogan": "学院课程资料共享 · 试卷、笔记、课件，按课程一站找齐",
-  "footer": "我的学院资料库 · 学生自发维护 · 非官方项目",
+  "school": "吉林大学电子科学与工程学院",
+  "school_short": "吉大电子学院",
+  "description": "吉林大学电子科学与工程学院课程资料共享平台，按年级和课程整理考试资料、课程笔记、课件和实验资料。",
+  "slogan": "吉林大学电子科学与工程学院资料共享 · 试卷、笔记、课件，按课程一站找齐",
+  "footer": "吉大电子资料库 · 学生自发维护 · 非官方项目",
   "domain": "materials.example.com",
   "repo": "https://github.com/your-name/college-materials",
   "mcp_name": "my-college-hub",
   "community": "",
   "icp": "",
-  "verified_domains": ["example.edu.cn"],
-  "verified_label": "学院认证",
+  "verified_domains": ["jlu.edu.cn"],
+  "verified_label": "吉大邮箱认证",
   "link_example": "如 大一高等数学历年试卷合集",
-  "announcement": "本站面向本学院同学，资料由用户自行上传，不保证准确、完整。请仅用于个人学习，下载和使用前请自行甄别。"
+  "announcement": "本站面向吉林大学电子科学与工程学院同学，资料由用户自行上传，不保证准确、完整。请仅用于个人学习，下载和使用前请自行甄别。"
 }
