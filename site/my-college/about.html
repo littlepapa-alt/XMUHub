@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>使用须知 · {{site.name}}</title>
+<meta name="description" content="{{site.description}}">
+<meta name="theme-color" content="#14263a" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#101d2d" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="{{site.logo}}">
+<link rel="apple-touch-icon" href="{{site.logo}}">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="preload" href="{{site.background}}" as="image">
+<link rel="stylesheet" href="/assets/app.css">
+</head>
+<body data-page="about">
+<header id="top" class="top"></header>
+<script>try{var t=sessionStorage.getItem('ludao.top');if(t){document.getElementById('top').innerHTML=t;document.documentElement.classList.add('seen')}}catch(e){}</script>
+<main><div class="wrap">
+  <section class="card" style="max-width:760px">
+    <h1>使用须知</h1>
+    <div class="row" style="align-items:center;margin:0 0 20px;padding:14px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2)">
+      <img src="/assets/site/logo.png" alt="吉林大学电子科学与工程学院院徽" style="width:76px;height:76px;object-fit:contain">
+      <img src="/assets/site/university-logo.jpg" alt="吉林大学校徽" style="width:76px;height:76px;object-fit:contain">
+      <div><b>吉林大学电子科学与工程学院</b><p class="small muted" style="margin:4px 0 0">本网站服务于学院学生的课程、考试与实验资料共享。</p></div>
+    </div>
+    <div class="notice warn"><b>免责声明</b><p class="small" style="margin:6px 0 0">{{site.name}}是同学自发维护的非官方学习交流项目，与任何学校及其官方机构无关，不代表任何学校。全部资料由用户自行上传，本站不对资料的来源、准确性、完整性和合法性作任何保证；资料仅供个人学习、研究使用，不得用于商业用途。使用本站即表示你同意本页全部条款。</p></div>
+    <h2 id="hosting">文件托管说明</h2>
+    <p>本站服务器不存储任何资料文件。文件的上传、存储及下载由第三方服务提供商（GitHub 及国内公共加速镜像）完成，本站仅提供上传辅助、资源信息展示及第三方链接索引服务。</p>
+    <p>本站不主动编辑、推荐或修改用户上传的资料内容；审核只核对分类、命名和是否明显违规，不代表本站认可或核实了资料的版权状态。</p>
+    <h2>欢迎上传</h2>
+    <p>往年试卷、自己整理的笔记、老师公开发放的课件与作业题、实验指导等有助于学习的资料。</p>
+    <h2>请不要上传</h2>
+    <p>含他人隐私（姓名、学号、成绩）的文件；明确「勿外传」「仅内部使用」的材料；受密码保护、来源与授权不明的内部题库；与学习无关的内容。</p>
+    <p><b>严禁上传尚未公开或正在进行的考试的试题和答案</b>（包括四六级、考研等国家教育考试和期中、期末等课程考试的「押题」「泄题」「答案」）。只接受考试结束、已经公开的往年试题。违反的资料一律驳回，上传者账号封禁；涉嫌违法的，本站会保存记录并配合有关部门调查。</p>
+    <h2>命名与分类</h2>
+    <p>资料和选课系统一样按「校选课 / 公共课 / 专业课 / 体育课」分类，再按开课学院、课程细分；另有「教材与参考书」「工具模板与校园服务」两个栏目。上传时只需选择课程、时间和类型，系统会自动生成规范文件名：<code>课程_时间_类型(卷别、含答案).扩展名</code>，例如 <code>微积分I-1_2023-2024秋_期中试卷(含答案).pdf</code>。</p>
+    <h2>账号与权限</h2>
+    <ul>
+      <li><b>贡献者</b>：注册即是。上传后需审核员通过才会公开（先审后发）。</li>
+      <li><b>可信贡献者</b>：由管理员提升，上传后立即公开，之后复核（先发后审）。</li>
+      <li><b>审核员</b>：处理审核队列、整理分类。审核员没有免审：自己上传或修改的资料、新建的分类、头像、推荐的站外链接、合集、备注和删除申请，都要由另一位审核员审核，不能自己审自己的。</li>
+      <li><b>管理员</b>：另外处理投诉与反馈、管理用户。管理员提交的内容免审，直接生效。</li>
+      <li>审核员和管理员都承诺对工作中接触到的用户信息保密，只用于审核和处理投诉。</li>
+    </ul>
+    <p>个人信息怎么收集、使用和保存，见<a href="/privacy">隐私政策</a>。你的昵称和上传记录默认只有审核员和管理员能看到；你可以在「我的」页面选择在自己上传的资料上公开昵称。邮箱只有管理员能看到，任何情况下都不会公开。头像审核通过后对所有人可见。</p>
+    <h2 id="uploader">上传者承诺</h2>
+    <ul>
+      <li>上传者保证对所上传的内容拥有著作权，或已取得权利人的授权，或属于法律允许的合理使用，并对上传内容承担全部法律责任。</li>
+      <li>不上传侵犯他人著作权、隐私或其他合法权益的内容，不上传违反法律法规或学校规定的内容。</li>
+      <li>因上传内容引起的任何纠纷，由上传者自行承担；本站在收到权利人附有证明材料的通知并核实后，会下架相关内容并视情况限制上传者的权限。</li>
+    </ul>
+    <h2 id="copyright">版权声明与侵权投诉</h2>
+    <p>本站所有资料均由用户自行上传分享，仅供个人学习、研究使用，不得用于任何商业用途。本站不对资料主张任何权利，资料的著作权归原作者或权利人所有；上传者应保证自己有权分享所上传的内容，并对其负责。</p>
+    <p>如果你认为某份资料侵犯了你的著作权、隐私或其他合法权益，请登录后联系我们（处理结果和补充材料的沟通都通过你的账号邮箱）：</p>
+    <ul>
+      <li>登录后在资料页点击「投诉 / 申请下架」，或在<a href="/feedback">意见反馈</a>页勾选「这是资料下架 / 侵权投诉」后提交；也可以通过{{site.community}}联系管理员。</li>
+      <li>请写明资料的页面链接（形如 <code>{{site.domain}}/r/123</code>）、你的身份和权利说明。我们通过你的账号邮箱（或你另外留下的邮箱）联系你。</li>
+      <li>必须附上<b>足以证明资料确实属于你</b>的初步材料，例如：原始文件或手稿（含修改记录、创建时间）、出题 / 编写 / 整理过程的记录、署名或出版信息、授课教师或单位出具的说明等。只声明「这是我的」而没有任何证明的，无法核实权利归属。</li>
+    </ul>
+    <p>我们收到后会在 <b>48 小时内</b>审核：证明材料充分、能确认你是权利人的，下架相关资料（本站不再展示、不再提供任何链接），并视情况限制上传者的权限；<b>没有提供证明材料或材料不足以证明权利归属的，一律驳回</b>。需要补充材料或进一步核实的，我们会通过你留下的邮箱联系你，补充后可以重新审核。本站遵循「通知—删除」规则：在收到权利人的合格通知前，本站不知道也不应当知道具体资料是否侵权。</p>
+  </section>
+</div></main>
+<footer id="foot" class="foot"></footer>
+<script>try{var f=sessionStorage.getItem('ludao.foot');if(f)document.getElementById('foot').innerHTML=f}catch(e){}</script>
+<script type="module" src="/assets/pages/static.js"></script>
+</body>
+</html>
