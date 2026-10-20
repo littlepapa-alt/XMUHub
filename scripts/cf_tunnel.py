@@ -94,7 +94,11 @@ def status():
 
 def create(name):
     t = tunnel(name) or ok(call('POST', A, {'name': name, 'config_src': 'cloudflare'}), 'create tunnel')
-    ingress = {'config': {'ingress': [{'hostname': HOST, 'service': ORIGIN}, {'service': 'http_status:404'}]}}
+    # Other host names the machine serves through the same tunnel (added by hand) are kept.
+    current = call('GET', f'{A}/{t["id"]}/configurations')
+    rules = ((current.get('result') or {}).get('config') or {}).get('ingress') or []
+    others = [r for r in rules if r.get('hostname') and r['hostname'] != HOST]
+    ingress = {'config': {'ingress': [{'hostname': HOST, 'service': ORIGIN}, *others, {'service': 'http_status:404'}]}}
     ok(call('PUT', f'{A}/{t["id"]}/configurations', ingress), 'set ingress')
     print(f'tunnel {name}: {t["id"]} ({HOST} -> {ORIGIN})')
 
