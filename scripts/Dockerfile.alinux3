@@ -7,9 +7,12 @@ ARG HTTP_PROXY
 ARG HTTPS_PROXY
 ARG ALL_PROXY
 ARG NO_PROXY
+ARG RUSTUP_DIST_SERVER=https://rsproxy.cn
+ARG RUSTUP_UPDATE_ROOT=https://rsproxy.cn/rustup
 
 ENV HTTP_PROXY=${HTTP_PROXY} HTTPS_PROXY=${HTTPS_PROXY} ALL_PROXY=${ALL_PROXY} NO_PROXY=${NO_PROXY} \
-    http_proxy=${HTTP_PROXY} https_proxy=${HTTPS_PROXY} all_proxy=${ALL_PROXY} no_proxy=${NO_PROXY}
+    http_proxy=${HTTP_PROXY} https_proxy=${HTTPS_PROXY} all_proxy=${ALL_PROXY} no_proxy=${NO_PROXY} \
+    RUSTUP_DIST_SERVER=${RUSTUP_DIST_SERVER} RUSTUP_UPDATE_ROOT=${RUSTUP_UPDATE_ROOT}
 
 RUN set -eux; \
     sed -i 's|http://mirrors.cloud.aliyuncs.com|https://mirrors.aliyun.com|g; s|https://mirrors.cloud.aliyuncs.com|https://mirrors.aliyun.com|g; s|http://mirrors.aliyun.com|https://mirrors.aliyun.com|g' /etc/yum.repos.d/*.repo || true; \
@@ -20,7 +23,7 @@ RUN set -eux; \
 # Official rustup, reached through the proxy build-alinux3.ps1 passes in (host.docker.internal:7890).
 # A failed download must fail the build: a piped `curl | sh` once produced an image without rustc.
 RUN set -eux; \
-    curl -sSf --retry 3 --max-time 120 -o /tmp/rustup.sh https://sh.rustup.rs; \
+    curl -sSf --retry 3 --max-time 120 -o /tmp/rustup.sh https://rsproxy.cn/rustup-init.sh; \
     sh /tmp/rustup.sh -y --profile minimal --default-toolchain stable; \
     rm -f /tmp/rustup.sh; \
     /root/.cargo/bin/rustc --version
