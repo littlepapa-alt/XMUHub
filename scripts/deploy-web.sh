@@ -30,7 +30,7 @@ echo "部署版本：$REV$DIRTY → $SSH_USER@$SSH_HOST:$REMOTE_BASE/web"
 STAGE="$(mktemp -d)"; trap 'rm -rf "$STAGE"' EXIT
 mkdir -p "$STAGE/_site"
 cp -R "$SITE_DIR/" "$STAGE/_site/"
-tar -czf "$STAGE/web.tar.gz" -C web . -C "$STAGE" _site
+COPYFILE_DISABLE=1 tar --no-xattrs --no-mac-metadata -czf "$STAGE/web.tar.gz" -C web . -C "$STAGE" _site
 echo "打包完成：$(du -h "$STAGE/web.tar.gz" | cut -f1)"
 
 if [ "$DRY_RUN" = 1 ]; then echo "（dry-run）不上传、不重启"; exit 0; fi
@@ -42,17 +42,24 @@ set -e
 cd '$REMOTE_BASE'
 rm -rf web.new && mkdir web.new
 tar -xzf web.tar.gz -C web.new && rm -f web.tar.gz
+find web.new -name '._*' -delete
 chown -R xmuhub:xmuhub web.new
 rm -rf web.old
 [ -d web ] && mv web web.old
 mv web.new web
 printf 'web=%s%s\n' '$REV' '$DIRTY' > DEPLOYED
 systemctl restart '$SERVICE'
-if systemctl is-active --quiet '$SERVICE'; then
-  echo "服务已重启，状态正常"
+ok=0
+for i in 1 2 3 4 5 6; do
+  sleep 2
+  if systemctl is-active --quiet '$SERVICE' && curl -sf -o /dev/null --max-time 3 http://127.0.0.1:8089/; then ok=1; break; fi
+done
+if [ "\$ok" = 1 ]; then
+  echo "服务已重启，健康检查通过"
   rm -rf web.old
 else
   echo "服务启动失败，回滚到旧版本" >&2
+  journalctl -u '$SERVICE' --no-pager -n 10 >&2 || true
   mv web web.bad && mv web.old web
   systemctl restart '$SERVICE' || true
   exit 1
