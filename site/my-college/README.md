@@ -6,6 +6,7 @@
 - `browse.html`、`search.html`、`assets/site/catalog.js`：默认列出课程；按真实分类树推导年级与学期，支持名称 / 拼音搜索、资料收录筛选、排序、两种视图和每页 12 门课程。地址栏保存筛选状态。
 - `assets/site/resource-search.js`：复用上游的资料搜索，保留类型、范围、层次及分页；无关键词时提示输入关键词，不遍历全库资料。
 - `node.html`、`assets/pages/node.js`：根据课程实际资料生成类型筛选，支持年份、排序；保留合集、批量下载、关注、审核员管理及移动功能。筛选后只选择和下载当前结果。
+- `assets/app.js`：覆盖上游公共布局，仅移除顶部导航的“⭐ 开源”入口；页脚源代码链接保留。同步上游时需核对该覆盖文件。
 - `assets/site/tree-picker.js`：保留 `/browse?pick=1` 上传分类选择行为。
 - `assets/site/learning.js`、`learning.css`：公共课程卡片、布局和样式。软导航不会替换 head，因此布局入口会按需加载样式；选择器限定在课程页面，账号和上传页面继续使用上游界面。
 
