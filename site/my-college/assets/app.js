@@ -1,6 +1,15 @@
 // Shared front-end helpers: API client, session, layout, formatting, downloads.
 // Plain ES modules, no build step — edit and redeploy.
 
+// Load the site theme on every route, including direct visits and soft navigation.
+if (!document.getElementById('site-theme')) {
+  const link = document.createElement('link');
+  link.id = 'site-theme';
+  link.rel = 'stylesheet';
+  link.href = '/assets/site/theme.css';
+  document.head.append(link);
+}
+
 export const store = {
   get(k) { try { return localStorage.getItem(k); } catch { return null; } },
   set(k, v) { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch { /* private mode */ } },
@@ -316,7 +325,7 @@ export async function layout(active) {
     <a class="brand" href="/"><img class="logo" src="{{site.logo}}" alt=""><span><b>{{site.name}}</b><small>{{site.subtitle}}</small></span></a>
     ${active === 'home' || active === 'search' ? '<span class="grow"></span>' : `<form action="/search" role="search"><input name="q" value="${esc(q)}" placeholder="搜索课程名称…" aria-label="搜索"></form>`}
     <nav class="nav">
-      <a href="/browse" data-k="browse">分类</a>
+      <a href="/browse" data-k="browse">课程目录</a>
       <a href="/help" data-k="help">教程</a>
       <a href="/admin" data-k="admin" hidden>审核</a>
       <a href="/notices" data-k="notices" id="nav-bell" class="bell" title="站内提醒" hidden>提醒<span class="count" hidden></span></a>

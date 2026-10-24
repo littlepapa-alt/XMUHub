@@ -1,14 +1,4 @@
-/* Course-first presentation, scoped so existing account and upload screens remain usable. */
-body:has(main .learning) { --navy:#153b46; --navy-2:#245562; --navy-soft:#e5eef0; --on-navy:#fff; --bg:#f7f8f6; --surface:#fff; --surface-2:#f0f3f1; --line:#dce3df; --text:#192e34; --muted:#5c6c70; --faint:#647579; --radius:6px; --shadow:none; background:#f7f8f6; background-image:none; color-scheme:light; }
-body:has(main .learning)::before, body:has(main .learning)::after { display:none; }
-body:has(main .learning) .top { background:#102e38; color:#fff; border:0; }
-body:has(main .learning) .top .wrap { max-width:1240px; height:78px; }
-body:has(main .learning) .brand, body:has(main .learning) .brand small { color:#fff; }
-body:has(main .learning) .brand .logo { width:46px; height:46px; }
-body:has(main .learning) .nav a { color:#dce6e7; }
-body:has(main .learning) .nav a:hover, body:has(main .learning) .nav a.on { background:#284853; color:#fff; }
-body:has(main .learning) .nav .up { background:#c77550; color:#fff; }
-body:has(main .learning) .top form input { background:#f4f7f6; color:#192e34; }
+/* Course layouts; shared colors and components live in theme.css. */
 .learning .wrap, .learning.wrap { max-width:1240px; }
 .learning h1, .learning h2, .learning h3 { font-family:var(--font); letter-spacing:-.025em; }
 .learning h1 { font-size:38px; line-height:1.3; }
@@ -94,7 +84,7 @@ body:has(.learning-home) main { padding:0; }
   .course-page #scoped { justify-content:flex-start; }
 }
 @media(max-width:600px) {
-  body:has(main .learning) .top .wrap { height:auto; min-height:74px; padding-top:14px; padding-bottom:12px; }
+  body .top .wrap { height:auto; min-height:74px; padding-top:14px; padding-bottom:12px; }
   .campus-hero { padding:44px 0 38px; }
   .campus-hero h1 { font-size:32px; }
   .campus-hero p { font-size:14px; }
@@ -112,23 +102,6 @@ body:has(.learning-home) main { padding:0; }
   .section-heading h2 { font-size:22px; }
   .course-list .course-card-mark { display:none; }
 }
-/* Reset the shared glass treatment inside the course experience. */
-body:has(main .learning) .brand b { color:#fff; }
-body:has(main .learning) .foot { background:#edf1ed; color:#5c6c70; border-color:#dce3df; }
+/* Course-specific surfaces keep their original spacing. */
 .learning .course-card { padding:0; }
-.learning .input, .learning select.input, .learning .toolbar select, .learning .bigsearch input { background:#fff; border-color:var(--line); color:var(--text); backdrop-filter:none; -webkit-backdrop-filter:none; }
-.learning .input:focus, .learning .bigsearch input:focus { background:#fff; }
-.learning .input::placeholder, .learning .bigsearch input::placeholder, body:has(main .learning) .top input::placeholder { color:#6b797d; }
-.learning .btn, .learning .chip { background:#eef2ef; border-color:var(--line); color:var(--text); backdrop-filter:none; -webkit-backdrop-filter:none; }
-.learning .btn:hover, .learning .chip:hover { background:#e0e9e4; }
-.learning .btn.primary { background:#153b46; color:#fff; }
-.learning .btn.primary:hover { background:#245562; }
-.learning .chip.on { background:#153b46; color:#fff; }
-.learning .card, .learning .page-head { border-color:var(--line); backdrop-filter:none; -webkit-backdrop-filter:none; }
 .learning .page-head { padding:0 0 28px; background:transparent; border-width:0 0 1px; border-radius:0; }
-.learning .tag[class*="t-T"] { background:#e8efeb; color:#305349; }
-.learning .item:hover { background:#f4f7f4; }
-body:has(main .learning) .modal-box { background:#fff; }
-body:has(main .learning) .modal-box .input { background:#fff; color:#192e34; border-color:#dce3df; }
-body:has(main .learning) { --ok:#3f7557; --ok-soft:#e8f1e9; --warn:#95651f; --warn-soft:#fbefda; --bad:#ad4d42; --bad-soft:#f9e8e4; }
-.learning .notice.bad { background:var(--bad-soft); color:var(--bad); }
