@@ -22,7 +22,15 @@ body .nav a:hover, body .nav a.on { background:#284853; color:#fff; }
 body .nav .up { background:#c77550; color:#fff; }
 body .nav .up:hover { background:#ad6547; color:#fff; }
 body .top form input { background:#f4f7f6; color:var(--text); }
-body .foot { background:#edf1ed; color:var(--muted); border-color:var(--line); }
+body .foot { background:#edf1ed; color:var(--muted); border-color:var(--line); padding:30px 0 36px; font-size:12px; line-height:1.9; }
+body .foot .wrap { display:flex; flex-direction:column; align-items:flex-start; gap:8px; max-width:1240px; padding-right:100px; }
+body .foot p { margin:0; }
+body .foot .footer-brand { font-size:13px; font-weight:600; color:#40565b; }
+body .foot .footer-notice { max-width:920px; }
+body .foot .footer-links { display:flex; flex-wrap:wrap; gap:6px 22px; width:100%; margin-top:6px; padding-top:12px; border-top:1px solid var(--line); }
+body .foot a { color:#405e65; text-decoration:underline; text-decoration-color:#b7c7c5; text-underline-offset:3px; }
+body .foot .footer-links a { text-decoration:none; }
+body .foot a:hover { color:var(--navy); text-decoration:underline; }
 
 body .top, body .foot, body .card, body .page-head, body .tabs, body .drop,
 body .modal-box, body .suggest ul, body .picked, body .bulkbar, body .frow,
@@ -81,6 +89,9 @@ html.nav-busy::after { background:#c77550; }
 @media(max-width:720px) {
   body .top .wrap { height:auto; min-height:74px; gap:8px 12px; padding-top:14px; padding-bottom:12px; }
   body .brand { font-size:18px; }
+  body .foot { padding:24px 0 92px; }
+  body .foot .wrap { padding-right:24px; gap:10px; }
+  body .foot .footer-links { gap:8px 18px; }
 }
 @media print {
   body { background:#fff; }

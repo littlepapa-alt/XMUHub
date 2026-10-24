@@ -335,9 +335,10 @@ export async function layout(active) {
   const foot = document.getElementById('foot');
   foot.className = 'foot';
   foot.innerHTML = `<div class="wrap">
-    <span>{{site.footer}} · <a href="${REPO_URL}" rel="noopener">源代码（AGPL-3.0）</a></span>
-    <span data-footer-hosting>本站服务器不存储任何资料文件。文件的上传、存储及下载由第三方服务提供商（GitHub 及国内公共加速镜像）完成，本站仅提供上传辅助、资源信息展示及第三方链接索引服务。<a href="/about#hosting">文件托管说明</a> · <a href="/about">免责声明</a> · <a href="/privacy">隐私政策</a></span>
-    <span>如认为资料侵犯了您的著作权或其他合法权益，请通过资料页「投诉 / 申请下架」或<a href="/feedback">意见反馈</a>联系我们（需要登录），并附上权属证明材料，核实后 48 小时内下架，无证明材料的不予受理。<a href="/about#copyright">版权声明与侵权投诉</a></span>
+    <p class="footer-brand">{{site.footer}}</p>
+    <p class="footer-description">本站资料由同学上传，存储于本站服务器，仅供个人学习交流。</p>
+    <p class="footer-notice">如涉及著作权或其他权益问题，请通过资料页「投诉 / 申请下架」或<a href="/feedback">意见反馈</a>联系我们（需登录），并附权属证明。核实后 48 小时内下架，具体要求见版权声明。</p>
+    <div class="footer-links" aria-label="站点说明"><a href="/about#hosting">文件存储说明</a><a href="/privacy">隐私政策</a><a href="/about#copyright">版权声明与侵权投诉</a></div>
     ${ICP ? `<span><a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener">${esc(ICP)}</a></span>` : ''}</div>`;
   feedbackButton(active !== 'feedback');
   topButton();

@@ -10,8 +10,6 @@ export async function layout(active) {
   const pending = baseLayout(active);
   const nav = document.querySelector('#top [data-k="browse"]');
   if (nav) nav.textContent = '课程目录';
-  const hosting = document.querySelector('#foot [data-footer-hosting]');
-  if (hosting) hosting.innerHTML = '本站资料存储于服务器，由同学上传分享，仅供个人学习交流。<a href="/about#hosting">文件托管说明</a> · <a href="/privacy">隐私政策</a>';
   const user = await pending;
   try {
     sessionStorage.setItem('ludao.top', document.getElementById('top').innerHTML);
