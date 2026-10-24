@@ -1,0 +1,11 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>课程资料 · {{site.name}}</title><meta name="description" content="{{site.description}}"><link rel="icon" href="{{site.logo}}"><link rel="stylesheet" href="/assets/app.css"><link id="learning-css" rel="stylesheet" href="/assets/site/learning.css"></head><body data-page="browse"><header id="top" class="top"></header><main><div class="learning course-page"><div class="wrap">
+  <p class="eyebrow">COURSE MATERIALS</p><div class="page-head">
+    <div><div class="crumbs" id="crumbs"></div><h1 id="name">加载中…</h1><div class="muted small" id="info"></div></div>
+    <div class="row"><form class="row" action="/search" role="search" id="scoped" style="flex-wrap:nowrap"><input type="hidden" name="within" id="within"><input type="hidden" name="type" value="resource"><input class="input" name="q" id="sq" placeholder="搜索这里的资料名称…" style="max-width:200px" aria-label="在本分类中搜索资料"></form>
+      <button class="btn" id="follow" type="button" hidden title="有新资料通过审核时在站内提醒你">关注</button><a class="btn primary" id="upload" href="/upload">上传到这里</a></div>
+  </div>
+  <section class="course-overview"><div><h2>课程资料概览</h2><p id="course-description" class="muted">课程资料由同学共同整理，选择下方类型开始查阅。</p></div><div id="course-types" class="chips" aria-label="按资料类型筛选"></div></section><div class="catalog-toolbar"><span id="visible-count" role="status"></span><label class="row small">排序 <select id="resource-sort" class="input"><option value="default">默认顺序</option><option value="new">最近上传</option><option value="downloads">下载最多</option><option value="title">资料名称</option></select></label></div><div id="editor" hidden></div>
+  <div class="grid" id="children" style="margin-bottom:16px"></div>
+  <div class="toolbar" id="bar" hidden><div class="chips" id="buckets"></div><span class="grow"></span><select id="time" aria-label="时间"><option value="">全部时间</option></select></div>
+  <section class="card" id="rescard"><div class="list" id="list"><div class="skeleton"></div></div></section>
+</div></div></main><footer id="foot" class="foot"></footer><script type="module" src="/assets/pages/node.js"></script></body></html>
