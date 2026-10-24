@@ -60,6 +60,7 @@ pub struct Config {
     /// Mark the session cookie `Secure` (production is behind HTTPS).
     pub secure_cookie: bool,
     pub smtp: Option<crate::mailer::SmtpConfig>,
+    pub smtp_backup: Option<crate::mailer::SmtpConfig>,
     /// Cap on bytes the server relays to GitHub per day (only when no Worker is used).
     pub relay_daily_bytes: u64,
     pub relay_concurrency: usize,
@@ -104,22 +105,33 @@ impl Config {
             admins_file: var("XMUHUB_ADMINS_FILE").map(Into::into),
             script_token: var("XMUHUB_SCRIPT_TOKEN").filter(|t| t.len() >= 32),
             secure_cookie: var_or("XMUHUB_SECURE_COOKIE", "1") != "0",
-            smtp: match (var("SMTP_HOST"), var("SMTP_USER"), var("SMTP_PASSWORD")) {
-                (Some(host), Some(user), Some(password)) => Some(crate::mailer::SmtpConfig {
-                    host,
-                    port: var_or("SMTP_PORT", "465").parse()?,
-                    from: var("MAIL_FROM").unwrap_or_else(|| user.clone()),
-                    user,
-                    password,
-                }),
-                _ => None,
-            },
+            smtp: smtp_config("SMTP_", "MAIL_FROM")?,
+            smtp_backup: smtp_config("SMTP_BACKUP_", "MAIL_BACKUP_FROM")?,
             relay_daily_bytes: var_or("RELAY_DAILY_MB", "5120").parse::<u64>()? * 1024 * 1024,
             relay_concurrency: var_or("RELAY_CONCURRENCY", "4").parse()?,
             turnstile_sitekey: var_or("TURNSTILE_SITEKEY", ""),
             turnstile_secret: var_or("TURNSTILE_SECRET", ""),
         })
     }
+}
+
+fn smtp_config(prefix: &str, from_key: &str) -> anyhow::Result<Option<crate::mailer::SmtpConfig>> {
+    let host = var(&format!("{prefix}HOST"));
+    let user = var(&format!("{prefix}USER"));
+    let password = var(&format!("{prefix}PASSWORD"));
+    // An empty password leaves a prepared account disabled until its authorization code is set.
+    if password.is_none() {
+        return Ok(None);
+    }
+    let host = host.ok_or_else(|| anyhow::anyhow!("{prefix}HOST is required when {prefix}PASSWORD is set"))?;
+    let user = user.ok_or_else(|| anyhow::anyhow!("{prefix}USER is required when {prefix}PASSWORD is set"))?;
+    Ok(Some(crate::mailer::SmtpConfig {
+        host,
+        port: var_or(&format!("{prefix}PORT"), "465").parse()?,
+        from: var(from_key).unwrap_or_else(|| user.clone()),
+        user,
+        password: password.unwrap(),
+    }))
 }
 
 fn rand_secret() -> Vec<u8> {

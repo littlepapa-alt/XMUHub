@@ -174,12 +174,12 @@ async fn run(cmd: Cmd, cfg: Config) -> anyhow::Result<()> {
         local: local_opt,
         worker_url: cfg.worker_url.clone(),
         relay,
-        mailer: match &cfg.smtp {
-            Some(smtp) => Some(mailer::Mailer::new(smtp)?),
-            None => {
+        mailer: match (&cfg.smtp, &cfg.smtp_backup) {
+            (None, None) => {
                 tracing::warn!("SMTP not configured: registration by email is disabled");
                 None
             }
+            _ => Some(mailer::Mailer::new(cfg.smtp.iter().chain(cfg.smtp_backup.iter()))?),
         },
         script_token: cfg.script_token.clone(),
         secure_cookie: cfg.secure_cookie,

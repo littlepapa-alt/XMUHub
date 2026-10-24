@@ -73,9 +73,14 @@ XMUHUB_ADMINS=you@example.com XMUHUB_SECURE_COOKIE=0 cargo run -p xmuhub-server 
 | `MIRRORS` | 下载镜像前缀列表，用逗号分隔 |
 | `XMUHUB_ADMINS_FILE` | 管理员名单文件（另可用 `XMUHUB_ADMINS` 以逗号分隔追加） |
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASSWORD` / `MAIL_FROM` | 验证码邮件的外发 SMTP |
+| `SMTP_BACKUP_HOST` / `SMTP_BACKUP_PORT` / `SMTP_BACKUP_USER` / `SMTP_BACKUP_PASSWORD` / `MAIL_BACKUP_FROM` | 可选备用 SMTP；主账号发送失败时自动尝试，授权码留空则不启用 |
 | `XMUHUB_SCRIPT_TOKEN` | 自动化脚本（导入工具）使用的管理员 Bearer 令牌 |
 
 ## 编译与部署
+
+主、备用 SMTP 按配置顺序发送，主账号成功后不会调用备用账号。明确的收件人不存在错误直接返回给用户；网络、认证、限额或发送策略拒绝会尝试备用账号。两个账号使用同一个验证码，并各自使用获授权的发件地址。若主账号已接收邮件后连接中断，用户可能收到两封包含相同验证码的邮件；延迟退信不触发自动切换。单次 SMTP 超时为 20 秒，两路均超时时等待会更长。
+
+QQ 与网易建议使用不同服务商以减少共同故障；网易需在邮箱设置中启用 SMTP 并填写授权码。不要把授权码写进 Git 或聊天。标准部署读取 `.secrets/mail.env`，也会读取可选的 `.secrets/mail-backup.env`（后者覆盖备用账号配置）。
 
 密钥和部署配置放在 `.secrets/` 下（已加入 gitignore，模板见 `.secrets.example/`）：`deploy.env`、`github.env`、`cloudflare.env`、`upload.env`、`mail.env`，以及管理员名单 `admins.txt`。
 

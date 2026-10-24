@@ -32,6 +32,10 @@ pub fn recipient_missing(error: &lettre::transport::smtp::Error) -> bool {
 }
 
 pub struct Mailer {
+    senders: Vec<Sender>,
+}
+
+struct Sender {
     transport: AsyncSmtpTransport<Tokio1Executor>,
     from: Mailbox,
 }
@@ -45,15 +49,20 @@ pub struct SmtpConfig {
 }
 
 impl Mailer {
-    pub fn new(cfg: &SmtpConfig) -> anyhow::Result<Mailer> {
-        let relay = if cfg.port == 465 { AsyncSmtpTransport::<Tokio1Executor>::relay } else { AsyncSmtpTransport::<Tokio1Executor>::starttls_relay };
-        let transport = relay(&cfg.host)?
-            .port(cfg.port)
-            .credentials(Credentials::new(cfg.user.clone(), cfg.password.clone()))
-            .timeout(Some(std::time::Duration::from_secs(20)))
-            .build();
-        let from = Mailbox::new(Some(crate::site::get().config.name.clone()), cfg.from.parse()?);
-        Ok(Mailer { transport, from })
+    pub fn new<'a>(configs: impl IntoIterator<Item = &'a SmtpConfig>) -> anyhow::Result<Mailer> {
+        let mut senders = Vec::new();
+        for cfg in configs {
+            let relay = if cfg.port == 465 { AsyncSmtpTransport::<Tokio1Executor>::relay } else { AsyncSmtpTransport::<Tokio1Executor>::starttls_relay };
+            let transport = relay(&cfg.host)?
+                .port(cfg.port)
+                .credentials(Credentials::new(cfg.user.clone(), cfg.password.clone()))
+                .timeout(Some(std::time::Duration::from_secs(20)))
+                .build();
+            let from = Mailbox::new(Some(crate::site::get().config.name.clone()), cfg.from.parse()?);
+            senders.push(Sender { transport, from });
+        }
+        tracing::info!(senders = senders.len(), "SMTP sender accounts configured");
+        Ok(Mailer { senders })
     }
 
     pub async fn send_code(&self, to: &str, code: &str, purpose: &str) -> anyhow::Result<()> {
@@ -75,13 +84,38 @@ impl Mailer {
 <p style="color:#8a93a6;font-size:12px;margin-top:24px">{name}是同学自发维护的非官方资料共享站 · <a href="https://{domain}" style="color:#1d4494">{domain}</a></p>
 </div>"#
         );
-        let msg = Message::builder()
-            .from(self.from.clone())
-            .to(to.parse()?)
-            .subject(subject)
-            .multipart(MultiPart::alternative_plain_html(text, html))?;
-        self.transport.send(msg).await?;
-        Ok(())
+        self.send_message(to, &subject, &text, &html).await
+    }
+
+    async fn send_message(&self, to: &str, subject: &str, text: &str, html: &str) -> anyhow::Result<()> {
+        let to: Mailbox = to.parse()?;
+        let mut last_error = None;
+        for (index, sender) in self.senders.iter().enumerate() {
+            // Each relay must use its own authorized From address. The recipient and
+            // verification code are identical, even if an ambiguous timeout duplicates delivery.
+            let msg = Message::builder()
+                .from(sender.from.clone())
+                .to(to.clone())
+                .subject(subject)
+                .multipart(MultiPart::alternative_plain_html(text.to_owned(), html.to_owned()))?;
+            match sender.transport.send(msg).await {
+                Ok(_) => {
+                    if index > 0 {
+                        tracing::info!(sender = index + 1, "verification mail accepted by backup SMTP");
+                    }
+                    return Ok(());
+                }
+                Err(error) => {
+                    // Retrying a nonexistent destination with another sender cannot fix it.
+                    if recipient_missing(&error) {
+                        return Err(error.into());
+                    }
+                    tracing::warn!(sender = index + 1, backup_available = index + 1 < self.senders.len(), "SMTP delivery failed");
+                    last_error = Some(error);
+                }
+            }
+        }
+        Err(last_error.map(anyhow::Error::from).unwrap_or_else(|| anyhow::anyhow!("no SMTP sender configured")))
     }
 }
 
@@ -91,6 +125,102 @@ mod tests {
     use lettre::address::Envelope;
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
     use tokio::net::TcpListener;
+
+    async fn fake_sender(from: &str, rejection: Option<&'static str>) -> (Sender, std::sync::Arc<std::sync::atomic::AtomicUsize>, tokio::task::JoinHandle<String>) {
+        use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let calls = Arc::new(AtomicUsize::new(0));
+        let accepted = calls.clone();
+        let task = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            accepted.fetch_add(1, Ordering::SeqCst);
+            let mut stream = BufReader::new(stream);
+            stream.get_mut().write_all(b"220 localhost test SMTP\r\n").await.unwrap();
+            let mut message = String::new();
+            let mut data = false;
+            loop {
+                let mut line = String::new();
+                if stream.read_line(&mut line).await.unwrap() == 0 { break; }
+                if data {
+                    if line == ".\r\n" {
+                        stream.get_mut().write_all(b"250 accepted\r\n").await.unwrap();
+                        break;
+                    }
+                    message.push_str(&line);
+                    continue;
+                }
+                let reply = if line.starts_with("RCPT TO:") && let Some(reason) = rejection {
+                    format!("{reason}\r\n")
+                } else if line.starts_with("DATA") {
+                    data = true;
+                    "354 send message\r\n".to_string()
+                } else {
+                    "250 localhost\r\n".to_string()
+                };
+                stream.get_mut().write_all(reply.as_bytes()).await.unwrap();
+                if line.starts_with("RCPT TO:") && rejection.is_some() { break; }
+            }
+            message
+        });
+        let sender = Sender {
+            transport: AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous("127.0.0.1")
+                .port(port)
+                .timeout(Some(std::time::Duration::from_secs(2)))
+                .build(),
+            from: from.parse().unwrap(),
+        };
+        (sender, calls, task)
+    }
+
+    #[tokio::test]
+    async fn backup_retries_delivery_failures_with_its_own_from_and_the_same_code() {
+        use std::sync::atomic::Ordering;
+
+        for rejection in ["550 The mail may contain inappropriate words or content.", "451 4.3.0 Try later", "535 5.7.8 Authentication failed"] {
+            let (primary, _, first) = fake_sender("primary@example.org", Some(rejection)).await;
+            let (backup, calls, second) = fake_sender("backup@example.net", None).await;
+            let mailer = Mailer { senders: vec![primary, backup] };
+            mailer.send_message("recipient@example.com", "Verification", "Code: 123456", "<p>123456</p>").await.unwrap();
+            first.await.unwrap();
+            let message = second.await.unwrap();
+            assert_eq!(calls.load(Ordering::SeqCst), 1);
+            assert!(message.contains("From: backup@example.net"), "{message}");
+            assert!(message.contains("To: recipient@example.com"));
+            assert!(message.contains("123456"));
+        }
+    }
+
+    #[tokio::test]
+    async fn primary_success_or_missing_recipient_does_not_contact_backup() {
+        use std::sync::atomic::Ordering;
+
+        for rejection in [None, Some("550 5.1.1 User unknown")] {
+            let (primary, _, first) = fake_sender("primary@example.org", rejection).await;
+            let (backup, calls, second) = fake_sender("backup@example.net", None).await;
+            let mailer = Mailer { senders: vec![primary, backup] };
+            let result = mailer.send_message("recipient@example.com", "Verification", "123456", "123456").await;
+            assert_eq!(result.is_ok(), rejection.is_none());
+            if let Err(error) = result {
+                assert!(recipient_missing(error.downcast_ref().unwrap()));
+            }
+            first.await.unwrap();
+            assert_eq!(calls.load(Ordering::SeqCst), 0);
+            second.abort();
+        }
+    }
+
+    #[tokio::test]
+    async fn both_senders_failing_preserves_the_final_smtp_error() {
+        let (primary, _, first) = fake_sender("primary@example.org", Some("451 Temporary error")).await;
+        let (backup, _, second) = fake_sender("backup@example.net", Some("550 5.1.1 User unknown")).await;
+        let mailer = Mailer { senders: vec![primary, backup] };
+        let error = mailer.send_message("recipient@example.com", "Verification", "123456", "123456").await.unwrap_err();
+        assert!(recipient_missing(error.downcast_ref().unwrap()));
+        first.await.unwrap();
+        second.await.unwrap();
+    }
 
     // Use real SMTP replies through lettre: its error display includes the 550 code,
     // while the enhanced status belongs to the underlying server response.

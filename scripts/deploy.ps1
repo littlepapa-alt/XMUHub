@@ -93,6 +93,8 @@ $gh = Read-EnvFile (Join-Path $Root ".secrets/github.env")
 $cf = Read-EnvFile (Join-Path $Root ".secrets/cloudflare.env") -Optional
 $up = Read-EnvFile (Join-Path $Root ".secrets/upload.env")
 $mail = Read-EnvFile (Join-Path $Root ".secrets/mail.env") -Optional
+$backupMail = Read-EnvFile (Join-Path $Root ".secrets/mail-backup.env") -Optional
+foreach ($key in $backupMail.Keys) { $mail[$key] = $backupMail[$key] }
 $WorkerName = if ($up.UPLOAD_WORKER_NAME) { $up.UPLOAD_WORKER_NAME } else { "xmuhub-upload" }
 # CF_UPLOAD_DOMAIN in .secrets/cloudflare.env (e.g. upload.vintces.icu, the Worker's custom domain)
 # switches uploads to the Worker on every deploy, so sync.ps1 keeps it too.
@@ -235,6 +237,11 @@ SMTP_PORT=$(if ($dep.SMTP_PORT) { $dep.SMTP_PORT } else { $mail.SMTP_PORT })
 SMTP_USER=$($mail.SMTP_USER)
 SMTP_PASSWORD=$($mail.SMTP_PASSWORD)
 MAIL_FROM=$($mail.MAIL_FROM)
+SMTP_BACKUP_HOST=$($mail.SMTP_BACKUP_HOST)
+SMTP_BACKUP_PORT=$($mail.SMTP_BACKUP_PORT)
+SMTP_BACKUP_USER=$($mail.SMTP_BACKUP_USER)
+SMTP_BACKUP_PASSWORD=$($mail.SMTP_BACKUP_PASSWORD)
+MAIL_BACKUP_FROM=$($mail.MAIL_BACKUP_FROM)
 RUST_LOG=info,tantivy=warn
 MIMALLOC_PURGE_DELAY=0
 "@
