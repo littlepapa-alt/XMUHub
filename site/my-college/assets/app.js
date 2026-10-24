@@ -326,7 +326,6 @@ export async function layout(active) {
     ${active === 'home' || active === 'search' ? '<span class="grow"></span>' : `<form action="/search" role="search"><input name="q" value="${esc(q)}" placeholder="搜索课程名称…" aria-label="搜索"></form>`}
     <nav class="nav">
       <a href="/browse" data-k="browse">课程目录</a>
-      <a href="/help" data-k="help">教程</a>
       <a href="/admin" data-k="admin" hidden>审核</a>
       <a href="/notices" data-k="notices" id="nav-bell" class="bell" title="站内提醒" hidden>提醒<span class="count" hidden></span></a>
       <a href="/me" data-k="me" id="nav-me">登录</a>
