@@ -35,6 +35,11 @@ echo "打包完成：$(du -h "$STAGE/web.tar.gz" | cut -f1)"
 
 if [ "$DRY_RUN" = 1 ]; then echo "（dry-run）不上传、不重启"; exit 0; fi
 
+if [ "$SITE_DIR" = "site/my-college" ]; then
+  "${SCP[@]}" "$SITE_DIR/ops/maintenance.py" "$SSH_USER@$SSH_HOST:$REMOTE_BASE/maintenance.py"
+  "${SSH[@]}" "python3 '$REMOTE_BASE/maintenance.py' start"
+fi
+
 "${SCP[@]}" "$STAGE/web.tar.gz" "$SSH_USER@$SSH_HOST:$REMOTE_BASE/web.tar.gz"
 
 "${SSH[@]}" "bash -s" <<REMOTE
@@ -65,4 +70,7 @@ else
   exit 1
 fi
 REMOTE
+if [ "$SITE_DIR" = "site/my-college" ]; then
+  "${SSH[@]}" "python3 '$REMOTE_BASE/maintenance.py' finish"
+fi
 echo "部署完成：http://$SSH_HOST"
