@@ -61,8 +61,8 @@ function renderList() {
     <button class="btn sm" id="dlsel" type="button" disabled>批量下载</button>
     ${signedIn && rs.length > 1 ? '<button class="btn sm" id="mksel" type="button" title="把选中的资料按顺序合成一个合集">整理成合集</button>' : ''}
     ${staff ? '<button class="btn sm" id="mvsel" type="button">移动选中到其他分类</button>' : ''}<span class="small faint" id="selcount"></span></div>` : '';
-  // 合集 fold their files into one row; with a filter on, files are listed one by one.
-  const grouped = !bucket && !time && !major && !resourceType && resourceSort === 'default';
+  // Keep matching chapters folded when filtering; explicit sorting lists individual files.
+  const grouped = resourceSort === 'default';
   const seriesOf = new Map();
   if (grouped) for (const s of data.series || []) for (const i of s.items) seriesOf.set(i.id, s);
   const byId = new Map(rs.map((r) => [r.id, r]));
