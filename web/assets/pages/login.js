@@ -27,6 +27,7 @@ function setMode(m) {
   $('#password').autocomplete = m === 'login' ? 'current-password' : 'new-password';
   $('#go').textContent = { login: '登录', register: '注册并登录', reset: '重置密码并登录' }[m];
   $('#msg').innerHTML = '';
+  mailMessage('');
 }
 
 $('#tabs').onclick = (e) => { const b = e.target.closest('button'); if (b) setMode(b.dataset.t); };
@@ -62,18 +63,48 @@ function consented() {
   return false;
 }
 
+function mailMessage(message, bad = false) {
+  const box = $('#mailmsg');
+  box.hidden = !message;
+  box.className = bad ? 'notice bad' : 'notice';
+  box.textContent = message;
+}
+
+function validEmail() {
+  const input = $('#email');
+  input.value = input.value.trim();
+  const email = input.value;
+  const format = /^[a-z\d_+-]+(?:\.[a-z\d_+-]+)*@(?:[a-z\d](?:[a-z\d-]*[a-z\d])?\.)+[a-z\d](?:[a-z\d-]*[a-z\d])?$/i;
+  const valid = email.length <= 100 && email.split('@')[0].length <= 64
+    && email.split('@')[1]?.split('.').every((label) => label.length <= 63) && format.test(email);
+  input.setAttribute('aria-invalid', String(!valid));
+  if (!valid) {
+    mailMessage(email ? '邮箱格式不正确，请检查后重试' : '请填写邮箱地址', true);
+    input.focus();
+  }
+  return valid;
+}
+
+$('#email').oninput = () => {
+  $('#email').removeAttribute('aria-invalid');
+  mailMessage('');
+};
+$('#email').addEventListener('invalid', () => { validEmail(); });
+
 async function sendCode() {
+  if (!validEmail()) return;
   const email = $('#email').value.trim();
-  if (!email) return toast('请先填写邮箱', true);
   if (!consented()) return;
+  mailMessage('正在发送验证码，请稍候…');
   $('#sendcode').disabled = true;
   try {
     await api('/auth/code', { method: 'POST', body: { email, purpose: mode === 'reset' ? 'reset' : 'register', captcha: captchaToken } });
-    toast('验证码已发送，请查收邮件（也看看垃圾箱）');
+    mailMessage('邮件已提交发送，请查收验证码（也请查看垃圾邮件）。若未收到，请确认邮箱真实可用。');
     $('#captchabox').hidden = true;
     cooldown = 60;
     tick();
   } catch (e) {
+    mailMessage(e.message, true);
     $('#sendcode').disabled = false;
     // A token works once: a new attempt needs a fresh check.
     captchaToken = '';
@@ -89,6 +120,7 @@ $('#sendcode').onclick = sendCode;
 
 $('#f').onsubmit = async (e) => {
   e.preventDefault();
+  if (!validEmail()) return;
   if (mode !== 'login' && $('#password').value !== $('#password2').value) {
     $('#msg').innerHTML = '<div class="notice bad">两次输入的密码不一致</div>';
     return;

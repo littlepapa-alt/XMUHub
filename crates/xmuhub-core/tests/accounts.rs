@@ -13,6 +13,21 @@ use xmuhub_core::model::{Level, User};
 use xmuhub_core::storage::Storage;
 use xmuhub_core::storage::local::LocalBackend;
 
+#[test]
+fn email_validation_rejects_empty_and_malformed_addresses_before_sending() {
+    use xmuhub_core::hub::normalize_email;
+
+    for email in ["", "  ", "\n\t"] {
+        assert_eq!(normalize_email(email).unwrap_err().to_string(), "请填写邮箱地址");
+    }
+    for email in ["user", "user@", "@example.com", "a@@example.com", "a@b@c.com", "a..b@example.com", ".a@example.com", "a.@example.com", "a@exam_ple.com", "a@-example.com", "a@example-.com", "a@example..com", "a b@example.com"] {
+        assert!(normalize_email(email).is_err(), "{email}");
+    }
+    assert_eq!(normalize_email("  Name.Tag+Course@Mails.JLU.EDU.CN  ").unwrap(), "name.tag+course@mails.jlu.edu.cn");
+    assert!(normalize_email(&format!("{}@example.com", "a".repeat(65))).is_err());
+    assert!(normalize_email(&format!("a@{}.com", "a".repeat(64))).is_err());
+}
+
 fn hub(dir: &std::path::Path) -> Hub {
     let db = Arc::new(Db::open(&dir.join("t.redb"), 1 << 20).unwrap());
     let storage = Storage::new(vec![Arc::new(LocalBackend { dir: dir.join("files"), secret: b"k".to_vec() })]);

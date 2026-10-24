@@ -498,23 +498,27 @@ struct CodeIn {
 }
 
 async fn send_code(State(app): S, h: HeaderMap, Json(b): Json<CodeIn>) -> R<Response> {
+    let email = xmuhub_core::hub::normalize_email(&b.email)?;
     let purpose = if b.purpose == "reset" { CodePurpose::Reset } else { CodePurpose::Register };
     // Signing up with an uncommon mail domain (or a +alias) takes a human check first; the
     // answer names the site key so the page can show the widget and ask again.
     if purpose == CodePurpose::Register
         && let Some(t) = &app.turnstile
-        && xmuhub_core::hub::normalize_email(&b.email).is_ok_and(|e| xmuhub_core::hub::needs_captcha(&e))
+        && xmuhub_core::hub::needs_captcha(&email)
         && !t.verify(&b.captcha, &real_ip(&h)).await
     {
         let msg = if b.captcha.is_empty() { "用这个邮箱注册需要先完成人机验证" } else { "人机验证没有通过，请再试一次" };
         return Ok((StatusCode::BAD_REQUEST, Json(json!({ "error": msg, "captcha": t.sitekey }))).into_response());
     }
     let mailer = app.mailer.as_ref().ok_or_else(|| bad("站点暂未开放邮件验证，请联系管理员"))?;
-    let (email, code) = app.hub.request_code(&b.email, purpose, &client_ip(&h))?;
+    let (email, code) = app.hub.request_code(&email, purpose, &client_ip(&h))?;
     if let Err(e) = mailer.send_code(&email, &code, if purpose == CodePurpose::Reset { "reset" } else { "register" }).await {
         tracing::warn!("send code to {email}: {e}");
         app.hub.cancel_code(&email, purpose);
-        return Err(ApiError(Error::Upstream("验证码邮件发送失败，请稍后重试".into())));
+        if e.downcast_ref::<lettre::transport::smtp::Error>().is_some_and(crate::mailer::recipient_missing) {
+            return Err(bad("该邮箱不存在，请检查邮箱地址后重试"));
+        }
+        return Err(ApiError(Error::Upstream("验证码邮件发送失败，邮件服务暂时无法投递。请稍后重试或换一个可用邮箱".into())));
     }
     Ok(Json(json!({ "sent": true })).into_response())
 }

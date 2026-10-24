@@ -185,13 +185,25 @@ pub(super) fn sha(s: &str) -> [u8; 32] {
 
 pub fn normalize_email(e: &str) -> Result<String> {
     let e = e.trim().to_lowercase();
+    if e.is_empty() {
+        return Err(bad("请填写邮箱地址"));
+    }
     let ok = e.len() <= 100
         && e.split_once('@').is_some_and(|(local, domain)| {
             !local.is_empty()
+                && local.len() <= 64
+                && !local.starts_with('.')
+                && !local.ends_with('.')
+                && !local.contains("..")
+                && local.chars().all(|c| c.is_ascii_alphanumeric() || "._+-".contains(c))
                 && domain.contains('.')
-                && !domain.starts_with('.')
-                && !domain.ends_with('.')
-                && e.chars().all(|c| c.is_ascii_alphanumeric() || "@._+-".contains(c))
+                && domain.split('.').all(|label| {
+                    !label.is_empty()
+                        && label.len() <= 63
+                        && !label.starts_with('-')
+                        && !label.ends_with('-')
+                        && label.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+                })
         });
     if ok { Ok(e) } else { Err(bad("邮箱格式不正确")) }
 }
