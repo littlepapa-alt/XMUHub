@@ -96,7 +96,9 @@ impl CosBackend {
     }
 
     fn sign_url(&self, method: &str, key: &str, headers: &[(&str, &str)], ttl: u64) -> String {
-        let start = Self::now();
+        // Match Tencent's SDK signing window: allow a small amount of clock
+        // skew before the request reaches COS.
+        let start = Self::now().saturating_sub(60);
         let end = start.saturating_add(ttl.max(60));
         let key_time = format!("{start};{end}");
         let host = self.endpoint_host();
@@ -125,9 +127,11 @@ impl CosBackend {
         let mut sign_key = Hmac::<Sha1>::new_from_slice(self.cfg.secret_key.as_bytes())
             .expect("HMAC accepts every key length");
         sign_key.update(key_time.as_bytes());
-        let sign_key = sign_key.finalize().into_bytes();
-        let mut signature =
-            Hmac::<Sha1>::new_from_slice(&sign_key).expect("HMAC accepts every key length");
+        // COS derives the second HMAC from the hexadecimal text of the first
+        // HMAC, as implemented by the official SDK, rather than its raw bytes.
+        let sign_key = hex::encode(sign_key.finalize().into_bytes());
+        let mut signature = Hmac::<Sha1>::new_from_slice(sign_key.as_bytes())
+            .expect("HMAC accepts every key length");
         signature.update(string_to_sign.as_bytes());
         let signature = hex::encode(signature.finalize().into_bytes());
 

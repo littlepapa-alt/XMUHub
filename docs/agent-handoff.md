@@ -7,7 +7,7 @@
 
 这是基于 XMUHub fork 的课程资料共享网站，服务吉林大学电子科学与工程学院学生。
 
-主要功能：邮箱验证码注册和登录、资料上传、审核、分类、搜索、预览、下载、用户反馈、审核员管理和管理员管理。网站的文件存储正在从服务器本地存储迁移到腾讯云 COS。
+主要功能：邮箱验证码注册和登录、资料上传、审核、分类、搜索、预览、下载、用户反馈、审核员管理和管理员管理。网站的文件存储已迁移到腾讯云 COS，服务器本地资料目录作为保留的回滚和备份副本。
 
 仓库信息：
 
@@ -85,17 +85,11 @@ site.json 中仍保留 repo 字段，因为项目采用 AGPL-3.0。页面是否�
 已检查到服务器部署标记：
 
 ~~~text
-backend=114de21 (线上二进制)
+backend=manual COS signature-fix build (线上二进制)
 web=80f6e52
 ~~~
 
-本地当前最新提交：
-
-~~~text
-114de21 fix: use RFC3986 encoding for COS signatures
-~~~
-
-COS 后端已经部署到线上，服务器环境中的 `XMUHUB_STORAGE=cos` 已生效。当前迁移还没有完成：腾讯云返回 `SignatureDoesNotMatch`，需要重新核对 COS SecretId、SecretKey 与 Bucket 所属账号是否匹配。
+COS 后端已部署到线上，服务器环境中的 `XMUHUB_STORAGE=cos` 已生效。签名实现已按腾讯云 SDK 的规则修复，并在服务器上重新编译部署。
 
 ## 5. COS 改造
 
@@ -185,12 +179,14 @@ ssh -i /安全位置/macbookpro.pem root@49.232.142.58 \
 - `xmuhub.service` 正常运行；
 - `XMUHUB_STORAGE=cos` 和 COS 配置已被服务进程读取；
 - 管理迁移接口返回 `primary: cos`；
-- `/var/lib/xmuhub/data/files` 中有 427 个本地分片、约 2.42 GB；
-- 数据库中有 348 个资料记录、427 个分片，当前副本仍是 `Local`；
+- `/var/lib/xmuhub/data/files` 中保留 427 个本地分片、约 2.42 GB；
+- 数据库中有 348 个资料记录、427 个分片，迁移接口待迁移数量为 0；
+- COS 私有 Bucket 中有 427 个 `blobs/` 对象，总大小为 2,419,295,009 字节；
+- `/api/meta` 的 `stored_bytes` 与 COS 对象总大小一致；
 - 已保存数据库备份：`/opt/xmuhub/releases/xmuhub-redb-before-cos-migration-20261025105518`；
-- 原始本地文件目录保留，迁移前后都不能删除。
+- 原始本地文件目录保留，后续完成独立备份前不要删除。
 
-迁移接口只读盘点命令：
+迁移已使用服务器本地资料作为源完成。迁移断点文件为 `.secrets/cos-migration-state.json`；服务器端仍保留本地资料，未删除任何原文件。后续重复核对可运行：
 
 ~~~sh
 python3 scripts/migrate-cos.py \
@@ -198,28 +194,9 @@ python3 scripts/migrate-cos.py \
   --dry-run
 ~~~
 
-本次实际迁移在 COS PUT 阶段返回 `403 SignatureDoesNotMatch`，所以没有确认任何文件，也没有修改旧本地文件。即使代码签名修复后，腾讯云官方 SDK 使用同一组密钥访问 Bucket 仍返回相同错误，下一步必须在腾讯云控制台重新生成或核对一组属于该 Bucket 所属账号的 SecretId/SecretKey；更新 `.secrets/cos.env` 后重新部署服务，再从单个小文件开始验证。
+该命令应返回 0 个待迁移文件。迁移脚本需要 `.secrets/upload.env` 中的 `XMUHUB_SCRIPT_TOKEN`，不要把令牌提交到仓库。
 
-确认候选数量和字节数正确后再正式迁移：
-
-~~~sh
-python3 scripts/migrate-cos.py \
-  --base-url http://49.232.142.58
-~~~
-
-若旧资料只有服务器本地副本：
-
-~~~sh
-scp -i /安全位置/macbookpro.pem -r \
-  root@49.232.142.58:/var/lib/xmuhub/data/files \
-  ./xmuhub-files
-
-python3 scripts/migrate-cos.py \
-  --base-url http://49.232.142.58 \
-  --local-dir ./xmuhub-files
-~~~
-
-迁移脚本需要 .secrets/upload.env 中的 XMUHUB_SCRIPT_TOKEN。迁移完成前不要删除服务器本地资料。完成后核对资源数量、COS 对象数量、下载临时链接、浏览器实际下载和 SHA-256。
+已通过腾讯云 SDK 生成私有对象的 5 分钟临时下载链接并实际读取：HTTP 200，下载大小与对象大小一致，SHA-256 与对象 key 和 `x-cos-meta-sha256` 一致。应用统计和迁移接口验证了数据库中的 COS 副本已经挂载；浏览器端下载仍需使用已登录账号在页面点击验证，匿名访问会被登录保护拦截。
 
 ## 7. 邮箱和注册
 
@@ -309,7 +286,7 @@ node scripts/check-web.mjs
 node scripts/check-rules.mjs
 ~~~
 
-此前电脑没有 node，上面两个 Node 检查尚未执行。
+此前电脑没有 node，上面两个 Node 检查尚未执行；如果工作区依赖提供 Node，再补跑这两项。
 
 线上检查：
 
@@ -334,16 +311,13 @@ curl -sS http://127.0.0.1:8089/ >/dev/null
 
 ## 11. 当前待办
 
-1. 在腾讯云控制台核对或重新生成与 Bucket 所属账号匹配的 COS SecretId/SecretKey；
-2. 更新本地 `.secrets/cos.env`，重新部署并验证单文件上传、HEAD 校验和数据库挂载；
-3. 确认 COS 私有 Bucket 的 CORS；
-4. 执行 COS 迁移 dry-run；
-5. 迁移并核对 348 个资料、427 个分片和对象摘要；
-6. 实测上传、审核、下载全链路；
-7. 迁移完成后撤下首页维护公告；
-8. 配置域名、HTTPS、备案和 CDN；
-9. 备份 `/var/lib/xmuhub/` 和 `/opt/xmuhub/`；
-10. 将手工部署恢复成可重复的标准脚本流程。
+1. 使用已登录账号在网页端实测一次资料下载，确认浏览器按应用下载计划直连 COS；
+2. 确认 COS 私有 Bucket 的 CORS 覆盖当前站点 Origin、GET、HEAD、PUT、OPTIONS 和所需响应头；
+3. 实测上传、审核、下载全链路；
+4. 建立 `/var/lib/xmuhub/` 和 `/opt/xmuhub/` 的定期备份，必要时异地备份到 COS；
+5. 配置域名、HTTPS、备案和 CDN；
+6. 将手工部署恢复成可重复的标准脚本流程；
+7. 维护公告仍在首页显示，完成登录态下载和发布前检查后运行 `python3 /opt/xmuhub/maintenance.py finish`。
 
 ## 12. 给其他智能体的直接提示词
 
@@ -353,5 +327,5 @@ curl -sS http://127.0.0.1:8089/ >/dev/null
 
 不要读取、输出、提交或发送 .secrets/ 中的任何密钥，特别是 COS、SMTP、SSH 和脚本令牌。不要直接修改服务器文件，先在 GitHub 分支修改、测试、提交，再按部署流程发布。线上更新前先显示维护公告。
 
-COS 功能在提交 de30c68 中实现，签名修复在 114de21 中实现，线上后端已部署到 114de21。不要把 scripts/deploy-web.sh 当成后端部署脚本；COS 后端必须通过完整 Rust 编译和标准部署流程发布。继续工作时先核对密钥归属，再从单个文件验证，不能在迁移失败时删除本地资料。完成后说明修改内容、测试命令、线上验证结果和剩余风险。
+COS 功能在提交 de30c68 中实现，签名修复在 114de21 之后继续补充了时间窗口和 HMAC 派生修复，线上后端已部署对应版本。不要把 scripts/deploy-web.sh 当成后端部署脚本；COS 后端必须通过完整 Rust 编译和标准部署流程发布。继续工作时保持本地资料副本，不能在未完成备份前删除。完成后说明修改内容、测试命令、线上验证结果和剩余风险。
 
