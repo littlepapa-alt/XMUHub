@@ -91,13 +91,15 @@ web=80f6e52
 
 COS 后端已部署到线上，服务器环境中的 `XMUHUB_STORAGE=cos` 已生效。签名实现已按腾讯云 SDK 的规则修复，并在服务器上重新编译部署。
 
-本次下载问题修复（2026-10-25，待线上发布）：
+本次下载问题修复（2026-10-25，已线上发布）：
 
 - COS 下载签名支持 `response-content-disposition`，浏览器直接下载时保留资料库生成的中文文件名；
 - 下载计划把资料文件名传给 COS 后端，原有 GitHub、本地和引用存储接口保持兼容；
 - 预览线路识别 COS 原生签名地址，浏览器可在 COS CORS 配置允许时直接读取并预览；
 - 浏览器仍直接访问 COS，服务器不代理、缓存或转发资料字节；
 - COS Bucket 必须继续允许站点 Origin 的 GET、HEAD、PUT、OPTIONS 和所需响应头，否则页面会提示没有可用预览线路。
+
+以上修复已于 2026-10-25 发布到线上。线上后端使用服务器 Docker 编译的 Linux release 二进制，旧二进制备份为 `/opt/xmuhub/releases/run-before-cos-preview-20261025150248`。
 
 ## 5. COS 改造
 
@@ -149,6 +151,8 @@ COS Bucket 要求：
 - CORS Methods：GET、HEAD、PUT、OPTIONS；
 - Allowed Headers：*；
 - Expose Headers：ETag、Content-Length、x-cos-meta-sha256。
+
+上述 CORS 配置已写入 COS 私有 Bucket，并已验证 GET 和 OPTIONS 请求均返回正确的 `Access-Control-Allow-Origin` 响应头。
 
 ## 6. COS 部署和迁移
 
@@ -204,7 +208,9 @@ python3 scripts/migrate-cos.py \
 
 该命令应返回 0 个待迁移文件。迁移脚本需要 `.secrets/upload.env` 中的 `XMUHUB_SCRIPT_TOKEN`，不要把令牌提交到仓库。
 
-已通过腾讯云 SDK 生成私有对象的 5 分钟临时下载链接并实际读取：HTTP 200，下载大小与对象大小一致，SHA-256 与对象 key 和 `x-cos-meta-sha256` 一致。应用统计和迁移接口验证了数据库中的 COS 副本已经挂载；浏览器端下载仍需使用已登录账号在页面点击验证，匿名访问会被登录保护拦截。
+已通过腾讯云 SDK 生成私有对象的 5 分钟临时下载链接并实际读取：HTTP 200，下载大小与对象大小一致，SHA-256 与对象 key 和 `x-cos-meta-sha256` 一致。应用统计和迁移接口验证了数据库中的 COS 副本已经挂载。
+
+线上浏览器验证已完成：管理员登录后打开资料 `微波技术_实验资料(微波实验第二次测量记录)_v2.pdf`，下载文件名正确，文件大小为 1,378,118 字节，SHA-256 为 `0f66aee2808e68a489e63707dfdf9c21f7c755601dbc66ef2e75848d2301470f`，下载文件可识别为 PDF，在线预览显示“共 1 页”。资料字节由浏览器直接从 COS 获取，服务器没有代理资料内容。
 
 ## 7. 邮箱和注册
 
@@ -319,13 +325,11 @@ curl -sS http://127.0.0.1:8089/ >/dev/null
 
 ## 11. 当前待办
 
-1. 发布本次 COS 文件名和预览线路修复后，使用已登录账号在网页端实测一次资料下载，确认浏览器按应用下载计划直连 COS；
-2. 确认 COS 私有 Bucket 的 CORS 覆盖当前站点 Origin、GET、HEAD、PUT、OPTIONS 和所需响应头；
-3. 实测上传、审核、下载全链路；
-4. 建立 `/var/lib/xmuhub/` 和 `/opt/xmuhub/` 的定期备份，必要时异地备份到 COS；
-5. 配置域名、HTTPS、备案和 CDN；
-6. 将手工部署恢复成可重复的标准脚本流程；
-7. 维护公告仍在首页显示，完成登录态下载和发布前检查后运行 `python3 /opt/xmuhub/maintenance.py finish`。
+1. 实测上传、审核、下载全链路；
+2. 建立 `/var/lib/xmuhub/` 和 `/opt/xmuhub/` 的定期备份，必要时异地备份到 COS；
+3. 配置域名、HTTPS、备案和 CDN；
+4. 将手工部署恢复成可重复的标准脚本流程；
+5. 评估 COS 临时链接的有效期、上传权限和大文件并发限制。
 
 ## 12. 给其他智能体的直接提示词
 
