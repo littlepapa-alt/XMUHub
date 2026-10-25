@@ -85,17 +85,17 @@ site.json 中仍保留 repo 字段，因为项目采用 AGPL-3.0。页面是否�
 已检查到服务器部署标记：
 
 ~~~text
-backend=38851d5
+backend=114de21 (线上二进制)
 web=80f6e52
 ~~~
 
 本地当前最新提交：
 
 ~~~text
-de30c68 feat: add Tencent COS storage and migration
+114de21 fix: use RFC3986 encoding for COS signatures
 ~~~
 
-所以 COS 功能已经在本地分支和 GitHub 分支中，但服务器尚未确认部署到 de30c68。不要假设线上已经启用 COS。
+COS 后端已经部署到线上，服务器环境中的 `XMUHUB_STORAGE=cos` 已生效。当前迁移还没有完成：腾讯云返回 `SignatureDoesNotMatch`，需要重新核对 COS SecretId、SecretKey 与 Bucket 所属账号是否匹配。
 
 ## 5. COS 改造
 
@@ -110,6 +110,8 @@ de30c68 已加入：
 - 服务器本地资料先复制到电脑，再上传 COS 的 local-dir 模式；
 - 多分片迁移、SHA-256 校验和断点续传；
 - COS 配置模板和部署说明。
+
+114de21 修复了 COS 签名的 RFC 3986 编码：主机名和元数据值中的 `-`、`.`、`_`、`~` 会按 COS 要求保留。对应的 COS 单元测试已通过。
 
 主要代码：
 
@@ -155,7 +157,7 @@ COS Bucket 要求：
 - .secrets/cos.env
 - 必要的邮箱和管理员配置
 
-当前这台电脑缺少 deploy.env 和 upload.env，因此不能直接运行完整的 scripts/deploy.ps1。scripts/deploy-web.sh 只部署网页和站点资源，不能部署 COS 后端。启用 COS 必须重新编译并部署 Rust 后端程序。
+当前这台电脑缺少 deploy.env 和 upload.env，因此不能直接运行完整的 scripts/deploy.ps1。scripts/deploy-web.sh 只部署网页和站点资源，不能部署 COS 后端。启用 COS 必须重新编译并部署 Rust 后端程序。本次已在服务器 Docker 编译环境中完成低内存 release 编译并部署。
 
 标准流程：
 
@@ -178,13 +180,25 @@ ssh -i /安全位置/macbookpro.pem root@49.232.142.58 \
   'python3 /opt/xmuhub/maintenance.py finish'
 ~~~
 
-确认后端已启用 COS 后，先执行：
+线上 COS 已确认：
+
+- `xmuhub.service` 正常运行；
+- `XMUHUB_STORAGE=cos` 和 COS 配置已被服务进程读取；
+- 管理迁移接口返回 `primary: cos`；
+- `/var/lib/xmuhub/data/files` 中有 427 个本地分片、约 2.42 GB；
+- 数据库中有 348 个资料记录、427 个分片，当前副本仍是 `Local`；
+- 已保存数据库备份：`/opt/xmuhub/releases/xmuhub-redb-before-cos-migration-20261025105518`；
+- 原始本地文件目录保留，迁移前后都不能删除。
+
+迁移接口只读盘点命令：
 
 ~~~sh
 python3 scripts/migrate-cos.py \
   --base-url http://49.232.142.58 \
   --dry-run
 ~~~
+
+本次实际迁移在 COS PUT 阶段返回 `403 SignatureDoesNotMatch`，所以没有确认任何文件，也没有修改旧本地文件。即使代码签名修复后，腾讯云官方 SDK 使用同一组密钥访问 Bucket 仍返回相同错误，下一步必须在腾讯云控制台重新生成或核对一组属于该 Bucket 所属账号的 SecretId/SecretKey；更新 `.secrets/cos.env` 后重新部署服务，再从单个小文件开始验证。
 
 确认候选数量和字节数正确后再正式迁移：
 
@@ -197,7 +211,7 @@ python3 scripts/migrate-cos.py \
 
 ~~~sh
 scp -i /安全位置/macbookpro.pem -r \
-  root@49.232.142.58:/var/lib/xmuhub/files \
+  root@49.232.142.58:/var/lib/xmuhub/data/files \
   ./xmuhub-files
 
 python3 scripts/migrate-cos.py \
@@ -320,15 +334,15 @@ curl -sS http://127.0.0.1:8089/ >/dev/null
 
 ## 11. 当前待办
 
-1. 恢复 .secrets/deploy.env 和 .secrets/upload.env；
-2. 确认 COS 私有 Bucket 的 CORS；
-3. 部署 de30c68 对应的后端和网页；
-4. 确认线上以 XMUHUB_STORAGE=cos 启动；
-5. 执行 COS 迁移 dry-run；
-6. 迁移并核对现有资料；
-7. 实测上传、审核、下载全链路；
+1. 在腾讯云控制台核对或重新生成与 Bucket 所属账号匹配的 COS SecretId/SecretKey；
+2. 更新本地 `.secrets/cos.env`，重新部署并验证单文件上传、HEAD 校验和数据库挂载；
+3. 确认 COS 私有 Bucket 的 CORS；
+4. 执行 COS 迁移 dry-run；
+5. 迁移并核对 348 个资料、427 个分片和对象摘要；
+6. 实测上传、审核、下载全链路；
+7. 迁移完成后撤下首页维护公告；
 8. 配置域名、HTTPS、备案和 CDN；
-9. 备份 /var/lib/xmuhub/ 和 /opt/xmuhub/；
+9. 备份 `/var/lib/xmuhub/` 和 `/opt/xmuhub/`；
 10. 将手工部署恢复成可重复的标准脚本流程。
 
 ## 12. 给其他智能体的直接提示词
@@ -339,5 +353,5 @@ curl -sS http://127.0.0.1:8089/ >/dev/null
 
 不要读取、输出、提交或发送 .secrets/ 中的任何密钥，特别是 COS、SMTP、SSH 和脚本令牌。不要直接修改服务器文件，先在 GitHub 分支修改、测试、提交，再按部署流程发布。线上更新前先显示维护公告。
 
-COS 功能在提交 de30c68 中实现，但线上仍需确认是否部署。不要把 scripts/deploy-web.sh 当成后端部署脚本；COS 后端必须通过完整 Rust 编译和标准部署流程发布。完成后说明修改内容、测试命令、线上验证结果和剩余风险。
+COS 功能在提交 de30c68 中实现，签名修复在 114de21 中实现，线上后端已部署到 114de21。不要把 scripts/deploy-web.sh 当成后端部署脚本；COS 后端必须通过完整 Rust 编译和标准部署流程发布。继续工作时先核对密钥归属，再从单个文件验证，不能在迁移失败时删除本地资料。完成后说明修改内容、测试命令、线上验证结果和剩余风险。
 
