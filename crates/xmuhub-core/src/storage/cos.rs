@@ -23,6 +23,14 @@ const PATH_ENCODE_SET: &AsciiSet = &NON_ALPHANUMERIC
     .remove(b'~')
     .remove(b'/');
 
+// COS canonical query/header values use RFC 3986 encoding. In particular,
+// host names and metadata values keep `-`, `.`, `_`, and `~` unchanged.
+const COMPONENT_ENCODE_SET: &AsciiSet = &NON_ALPHANUMERIC
+    .remove(b'-')
+    .remove(b'.')
+    .remove(b'_')
+    .remove(b'~');
+
 #[derive(Clone)]
 pub struct CosConfig {
     pub secret_id: String,
@@ -211,7 +219,7 @@ impl StorageBackend for CosBackend {
 }
 
 fn encode_component(value: &str) -> String {
-    utf8_percent_encode(value, NON_ALPHANUMERIC).to_string()
+    utf8_percent_encode(value, COMPONENT_ENCODE_SET).to_string()
 }
 
 fn encode_path(path: &str) -> String {
@@ -264,5 +272,11 @@ mod tests {
             vec![("x-cos-meta-sha256".into(), sha.into())]
         );
         assert!(target.url.contains("q-header-list=host;x-cos-meta-sha256"));
+    }
+
+    #[test]
+    fn canonical_components_keep_rfc3986_unreserved_bytes() {
+        assert_eq!(encode_component("host-name.example_~"), "host-name.example_~");
+        assert_eq!(encode_component("a b"), "a%20b");
     }
 }
