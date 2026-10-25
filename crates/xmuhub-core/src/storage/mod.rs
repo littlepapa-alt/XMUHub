@@ -4,6 +4,7 @@
 //! Bytes never pass through the XMUHub server in production: the browser uploads straight
 //! to the backend's `UploadTarget`, and downloads are redirects to backend/mirror URLs.
 
+pub mod cos;
 pub mod github;
 pub mod local;
 pub mod mirrors;
@@ -49,7 +50,13 @@ pub trait StorageBackend: Send + Sync {
     }
 
     /// Verifies the bytes arrived intact and returns the final location.
-    async fn confirm(&self, reserved: &Location, size: u64, sha256: &str, receipt: &Receipt) -> Result<Location>;
+    async fn confirm(
+        &self,
+        reserved: &Location,
+        size: u64,
+        sha256: &str,
+        receipt: &Receipt,
+    ) -> Result<Location>;
 
     /// Download URLs for a stored part, best first.
     fn download_urls(&self, loc: &Location) -> Vec<String>;
@@ -72,6 +79,10 @@ impl Storage {
         &self.backends[0]
     }
 
+    pub fn primary_name(&self) -> &'static str {
+        self.primary().name()
+    }
+
     pub fn for_location(&self, loc: &Location) -> Result<&Arc<dyn StorageBackend>> {
         self.backends
             .iter()
@@ -82,7 +93,8 @@ impl Storage {
     /// URLs across every replica of a part, best first.
     /// Our own copies come before references into other people's repositories.
     pub fn download_urls(&self, replicas: &[Location]) -> Vec<String> {
-        let (owned, refs): (Vec<&Location>, Vec<&Location>) = replicas.iter().partition(|l| l.owned());
+        let (owned, refs): (Vec<&Location>, Vec<&Location>) =
+            replicas.iter().partition(|l| l.owned());
         owned
             .into_iter()
             .chain(refs)

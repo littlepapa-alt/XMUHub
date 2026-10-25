@@ -5,7 +5,8 @@
 
 .DESCRIPTION
     前置：先运行 scripts/build-alinux3.ps1 生成 `run`。密钥读自 .secrets/*.env（不入库）：
-      .secrets/github.env      GH_STORE_USER, GH_STORE_TOKEN
+      .secrets/github.env      GH_STORE_USER, GH_STORE_TOKEN（保留旧 GitHub 资料时使用）
+      .secrets/cos.env         COS_SECRET_ID, COS_SECRET_KEY, COS_BUCKET, COS_REGION
       .secrets/cloudflare.env  CF_ACCOUNT_ID, CF_API_TOKEN, CF_UPLOAD_DOMAIN, TURNSTILE_SITEKEY, TURNSTILE_SECRET
       .secrets/upload.env      UPLOAD_TICKET_SECRET, UPLOAD_WORKER_NAME
       .secrets/deploy.env      SSH_HOST, PUBLIC_URL, SITE, NGINX_EXT_DIR …（部署到哪、用哪个 site/ 文件夹）
@@ -89,7 +90,8 @@ function Read-EnvFile([string]$Path, [switch]$Optional) {
     return $h
 }
 
-$gh = Read-EnvFile (Join-Path $Root ".secrets/github.env")
+$gh = Read-EnvFile (Join-Path $Root ".secrets/github.env") -Optional
+$cos = Read-EnvFile (Join-Path $Root ".secrets/cos.env") -Optional
 $cf = Read-EnvFile (Join-Path $Root ".secrets/cloudflare.env") -Optional
 $up = Read-EnvFile (Join-Path $Root ".secrets/upload.env")
 $mail = Read-EnvFile (Join-Path $Root ".secrets/mail.env") -Optional
@@ -99,6 +101,7 @@ $WorkerName = if ($up.UPLOAD_WORKER_NAME) { $up.UPLOAD_WORKER_NAME } else { "xmu
 # CF_UPLOAD_DOMAIN in .secrets/cloudflare.env (e.g. upload.vintces.icu, the Worker's custom domain)
 # switches uploads to the Worker on every deploy, so sync.ps1 keeps it too.
 if (-not $UploadWorkerUrl -and $cf.CF_UPLOAD_DOMAIN) { $UploadWorkerUrl = "https://$($cf.CF_UPLOAD_DOMAIN)" }
+$storageKind = if ($dep.XMUHUB_STORAGE) { $dep.XMUHUB_STORAGE } elseif ($cos.COS_BUCKET) { "cos" } else { "github" }
 
 # ================================================================ 1. Cloudflare Worker
 function Deploy-Worker {
@@ -215,7 +218,7 @@ if ($LASTEXITCODE -ne 0) { throw "打包 web 失败" }
 
 $envText = @"
 # Managed by scripts/deploy.ps1 — edit .secrets/*.env locally instead.
-XMUHUB_STORAGE=github
+XMUHUB_STORAGE=$storageKind
 XMUHUB_BIND=127.0.0.1:$AppPort
 XMUHUB_DATA=$RemoteBase/data
 XMUHUB_WEB=$RemoteBase/web
@@ -224,6 +227,13 @@ GH_STORE_USER=$($gh.GH_STORE_USER)
 GH_STORE_TOKEN=$($gh.GH_STORE_TOKEN)
 GH_REPO_PREFIX=XMUHub-store
 GH_BACKUP_REPO=XMUHub-backup
+COS_SECRET_ID=$($cos.COS_SECRET_ID)
+COS_SECRET_KEY=$($cos.COS_SECRET_KEY)
+COS_BUCKET=$($cos.COS_BUCKET)
+COS_REGION=$(if ($cos.COS_REGION) { $cos.COS_REGION } else { "ap-beijing" })
+COS_ENDPOINT=$($cos.COS_ENDPOINT)
+COS_SIGNED_URL_TTL=$(if ($cos.COS_SIGNED_URL_TTL) { $cos.COS_SIGNED_URL_TTL } else { "1800" })
+COS_UPLOAD_URL_TTL=$(if ($cos.COS_UPLOAD_URL_TTL) { $cos.COS_UPLOAD_URL_TTL } else { "3600" })
 UPLOAD_WORKER_URL=$UploadWorkerUrl
 RELAY_DAILY_MB=5120
 RELAY_CONCURRENCY=4

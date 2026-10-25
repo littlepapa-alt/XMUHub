@@ -1,9 +1,9 @@
+mod access;
 mod alloc;
 mod api;
 mod captcha;
 mod config;
 mod gate;
-mod access;
 mod mailer;
 mod mcp;
 mod ratelimit;
@@ -21,6 +21,7 @@ use clap::{Parser, Subcommand};
 use xmuhub_core::db::Db;
 use xmuhub_core::hub::{Hub, Limits};
 use xmuhub_core::model::Level;
+use xmuhub_core::storage::cos::{CosBackend, CosConfig};
 use xmuhub_core::storage::github::{GitHubBackend, GitHubConfig};
 use xmuhub_core::storage::local::LocalBackend;
 use xmuhub_core::storage::mirrors::Mirrors;
@@ -29,7 +30,10 @@ use xmuhub_core::storage::{Storage, StorageBackend};
 use crate::config::{Config, StorageKind};
 
 #[derive(Parser)]
-#[command(name = "xmuhub", about = "XMUHub — 学生资料共享平台（站点配置见 site/）")]
+#[command(
+    name = "xmuhub",
+    about = "XMUHub — 学生资料共享平台（站点配置见 site/）"
+)]
 struct Cli {
     #[command(subcommand)]
     cmd: Option<Cmd>,
@@ -53,10 +57,12 @@ enum Cmd {
 
 fn main() -> anyhow::Result<()> {
     let (mi_version, purge_before, purge_after) = alloc::tune();
-    tracing_subscriber::fmt().with_env_filter(
-        tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info,tantivy=warn".into()),
-    )
-    .init();
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "info,tantivy=warn".into()),
+        )
+        .init();
     tracing::debug!(mi_version, purge_before, purge_after, "mimalloc tuned");
 
     let cli = Cli::parse();
@@ -72,17 +78,25 @@ fn main() -> anyhow::Result<()> {
 }
 
 async fn run(cmd: Cmd, cfg: Config) -> anyhow::Result<()> {
-    let db = match Db::open(&cfg.data_dir.join("xmuhub.redb"), cfg.db_cache_mb * 1024 * 1024) {
+    let db = match Db::open(
+        &cfg.data_dir.join("xmuhub.redb"),
+        cfg.db_cache_mb * 1024 * 1024,
+    ) {
         Ok(db) => Arc::new(db),
         Err(e) if e.to_string().contains("already open") => {
-            anyhow::bail!("数据库正被运行中的服务占用。请先 `systemctl stop xmuhub`，执行完再 `systemctl start xmuhub`（或用 deploy.ps1 -SetRole）")
+            anyhow::bail!(
+                "数据库正被运行中的服务占用。请先 `systemctl stop xmuhub`，执行完再 `systemctl start xmuhub`（或用 deploy.ps1 -SetRole）"
+            )
         }
         Err(e) => return Err(e.into()),
     };
     let mirrors = Arc::new(Mirrors::new(cfg.mirrors.clone()));
 
     let mut http = reqwest::Client::builder()
-        .user_agent(format!("XMUHub/0.1 (+https://{})", site::get().config.domain))
+        .user_agent(format!(
+            "XMUHub/0.1 (+https://{})",
+            site::get().config.domain
+        ))
         .connect_timeout(Duration::from_secs(10))
         .timeout(Duration::from_secs(60));
     if let Some(p) = &cfg.gh_api_proxy {
@@ -90,32 +104,82 @@ async fn run(cmd: Cmd, cfg: Config) -> anyhow::Result<()> {
     }
     let http = http.build()?;
     // Mirror probes must see what users in China see, so they never use the proxy.
-    let probe_http = reqwest::Client::builder().user_agent("XMUHub-probe/0.1").build()?;
+    let probe_http = reqwest::Client::builder()
+        .user_agent("XMUHub-probe/0.1")
+        .build()?;
 
-    let local = Arc::new(LocalBackend { dir: cfg.data_dir.join("files"), secret: cfg.ticket_secret.clone() });
-    let repo_ref: Arc<dyn StorageBackend> = Arc::new(xmuhub_core::storage::repo_ref::RepoRefBackend { mirrors: mirrors.clone() });
-    let (storage, github, local_opt) = match cfg.storage {
+    let local = Arc::new(LocalBackend {
+        dir: cfg.data_dir.join("files"),
+        secret: cfg.ticket_secret.clone(),
+    });
+    let repo_ref: Arc<dyn StorageBackend> =
+        Arc::new(xmuhub_core::storage::repo_ref::RepoRefBackend {
+            mirrors: mirrors.clone(),
+        });
+    let make_github = || {
+        Arc::new(GitHubBackend::new(
+            GitHubConfig {
+                owner: cfg.gh_owner.clone(),
+                token: cfg.gh_token.clone(),
+                repo_prefix: cfg.gh_repo_prefix.clone(),
+                assets_per_release: 900,
+                releases_per_repo: 50,
+                worker_url: cfg.worker_url.clone(),
+                ticket_secret: cfg.ticket_secret.clone(),
+                backup_repo: cfg.gh_backup_repo.clone(),
+            },
+            http.clone(),
+            db.clone(),
+            mirrors.clone(),
+        ))
+    };
+    // COS deployments may keep GitHub configured as a legacy backend for existing
+    // references and the repository import tools, but new uploads use COS.
+    let github = if matches!(&cfg.storage, StorageKind::GitHub)
+        || (!cfg.gh_owner.is_empty() && !cfg.gh_token.is_empty())
+    {
+        Some(make_github())
+    } else {
+        None
+    };
+    let (storage, github_primary, local_opt) = match cfg.storage {
         StorageKind::GitHub => {
-            let gh = Arc::new(GitHubBackend::new(
-                GitHubConfig {
-                    owner: cfg.gh_owner.clone(),
-                    token: cfg.gh_token.clone(),
-                    repo_prefix: cfg.gh_repo_prefix.clone(),
-                    assets_per_release: 900,
-                    releases_per_repo: 50,
-                    worker_url: cfg.worker_url.clone(),
-                    ticket_secret: cfg.ticket_secret.clone(),
-                    backup_repo: cfg.gh_backup_repo.clone(),
-                },
-                http.clone(),
-                db.clone(),
-                mirrors.clone(),
-            ));
+            let gh = github
+                .clone()
+                .expect("GitHub storage was validated in Config");
             // Local stays registered so blobs stored during development remain readable.
-            let backends: Vec<Arc<dyn StorageBackend>> = vec![gh.clone(), local.clone(), repo_ref.clone()];
+            let backends: Vec<Arc<dyn StorageBackend>> =
+                vec![gh.clone(), local.clone(), repo_ref.clone()];
             (Storage::new(backends), Some(gh), None)
         }
-        StorageKind::Local => (Storage::new(vec![local.clone() as Arc<dyn StorageBackend>, repo_ref.clone()]), None, Some(local.clone())),
+        StorageKind::Cos => {
+            let cos: Arc<dyn StorageBackend> = Arc::new(CosBackend::new(
+                CosConfig {
+                    secret_id: cfg.cos_secret_id.clone(),
+                    secret_key: cfg.cos_secret_key.clone(),
+                    bucket: cfg.cos_bucket.clone(),
+                    region: cfg.cos_region.clone(),
+                    endpoint: cfg.cos_endpoint.clone(),
+                    signed_url_ttl: cfg.cos_signed_url_ttl,
+                    upload_url_ttl: cfg.cos_upload_url_ttl,
+                },
+                http.clone(),
+            ));
+            let mut backends: Vec<Arc<dyn StorageBackend>> = vec![cos];
+            if let Some(gh) = github.clone() {
+                backends.push(gh);
+            }
+            backends.push(repo_ref.clone());
+            (Storage::new(backends), None, None)
+        }
+        StorageKind::Local => (
+            Storage::new(vec![
+                local.clone() as Arc<dyn StorageBackend>,
+                repo_ref.clone(),
+            ]),
+            None,
+            Some(local.clone()),
+        ),
     };
     let admin_list = || {
         let mut v = cfg.admins.clone();
@@ -130,9 +194,15 @@ async fn run(cmd: Cmd, cfg: Config) -> anyhow::Result<()> {
     match cmd {
         Cmd::Role { email, level } => {
             use xmuhub_core::hub::Viewer;
-            let level = Level::from_u8(level).filter(|l| *l > Level::Guest && *l < Level::Admin).ok_or_else(|| anyhow::anyhow!("level must be 1-3; admins come from the admin list"))?;
+            let level = Level::from_u8(level)
+                .filter(|l| *l > Level::Guest && *l < Level::Admin)
+                .ok_or_else(|| {
+                    anyhow::anyhow!("level must be 1-3; admins come from the admin list")
+                })?;
             let system = hub.system_user()?;
-            let as_system = Viewer { user: Some(&system) };
+            let as_system = Viewer {
+                user: Some(&system),
+            };
             let email = email.trim().to_lowercase();
             let target = hub
                 .users(as_system, &email)?
@@ -153,7 +223,7 @@ async fn run(cmd: Cmd, cfg: Config) -> anyhow::Result<()> {
 
     // The relay stays on next to the Worker: it is where uploads go when the Worker fails or
     // has used up its daily quota (limits below still apply).
-    let relay = match &github {
+    let relay = match &github_primary {
         Some(gh) => Some(relay::Relay::new(
             cfg.ticket_secret.clone(),
             gh.owner().to_string(),
@@ -163,7 +233,15 @@ async fn run(cmd: Cmd, cfg: Config) -> anyhow::Result<()> {
         )?),
         _ => None,
     };
-    tracing::info!(upload_via = if !cfg.worker_url.is_empty() && github.is_some() { "worker (relay as fallback)" } else if relay.is_some() { "server relay" } else { "local" });
+    tracing::info!(
+        upload_via = if !cfg.worker_url.is_empty() && github.is_some() {
+            "worker (relay as fallback)"
+        } else if relay.is_some() {
+            "server relay"
+        } else {
+            "local"
+        }
+    );
 
     let site = Arc::new(web::Site::load(&cfg.web_dir, site::get())?);
     let csp = site.csp();
@@ -179,7 +257,9 @@ async fn run(cmd: Cmd, cfg: Config) -> anyhow::Result<()> {
                 tracing::warn!("SMTP not configured: registration by email is disabled");
                 None
             }
-            _ => Some(mailer::Mailer::new(cfg.smtp.iter().chain(cfg.smtp_backup.iter()))?),
+            _ => Some(mailer::Mailer::new(
+                cfg.smtp.iter().chain(cfg.smtp_backup.iter()),
+            )?),
         },
         script_token: cfg.script_token.clone(),
         secure_cookie: cfg.secure_cookie,
@@ -190,12 +270,23 @@ async fn run(cmd: Cmd, cfg: Config) -> anyhow::Result<()> {
         gates: Default::default(),
         secret: cfg.ticket_secret.clone(),
         turnstile: if cfg.turnstile_sitekey.is_empty() || cfg.turnstile_secret.is_empty() {
-            tracing::warn!("Turnstile not configured: uncommon mail domains can sign up without a human check");
+            tracing::warn!(
+                "Turnstile not configured: uncommon mail domains can sign up without a human check"
+            );
             None
         } else {
             // Straight to Cloudflare, never through the GitHub API proxy.
-            let http = reqwest::Client::builder().user_agent(format!("XMUHub/0.1 (+https://{})", site::get().config.domain)).build()?;
-            Some(captcha::Turnstile::new(cfg.turnstile_sitekey.clone(), cfg.turnstile_secret.clone(), http))
+            let http = reqwest::Client::builder()
+                .user_agent(format!(
+                    "XMUHub/0.1 (+https://{})",
+                    site::get().config.domain
+                ))
+                .build()?;
+            Some(captcha::Turnstile::new(
+                cfg.turnstile_sitekey.clone(),
+                cfg.turnstile_secret.clone(),
+                http,
+            ))
         },
     });
     if let Some(gh) = &github {
@@ -225,10 +316,15 @@ async fn run(cmd: Cmd, cfg: Config) -> anyhow::Result<()> {
     }
 
     let router = api::router(app.clone())
-        .layer(axum::middleware::from_fn_with_state(csp, web::security_headers))
+        .layer(axum::middleware::from_fn_with_state(
+            csp,
+            web::security_headers,
+        ))
         .layer(tower_http::trace::TraceLayer::new_for_http());
     let listener = listener(cfg.bind).await?;
-    axum::serve(listener, router).with_graceful_shutdown(shutdown()).await?;
+    axum::serve(listener, router)
+        .with_graceful_shutdown(shutdown())
+        .await?;
     hub.flush_downloads()?;
     tracing::info!("bye");
     Ok(())
@@ -238,7 +334,8 @@ async fn shutdown() {
     let ctrl_c = tokio::signal::ctrl_c();
     #[cfg(unix)]
     {
-        let mut term = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()).expect("sigterm handler");
+        let mut term = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("sigterm handler");
         tokio::select! { _ = ctrl_c => {}, _ = term.recv() => {} }
     }
     #[cfg(not(unix))]
@@ -253,7 +350,10 @@ fn spawn_jobs(app: Arc<api::App>, github: Option<Arc<GitHubBackend>>, probe_http
         loop {
             tick.tick().await;
             let h = hub.clone();
-            if let Err(e) = tokio::task::spawn_blocking(move || h.flush_downloads()).await.unwrap_or(Ok(())) {
+            if let Err(e) = tokio::task::spawn_blocking(move || h.flush_downloads())
+                .await
+                .unwrap_or(Ok(()))
+            {
                 tracing::error!("flush downloads: {e}");
             }
             alloc::collect();
@@ -313,13 +413,23 @@ fn spawn_jobs(app: Arc<api::App>, github: Option<Arc<GitHubBackend>>, probe_http
         let mut round = 0u8;
         loop {
             tick.tick().await;
-            mirrors.probe(&probe_http, &probe, xmuhub_core::storage::github::PROBE_SIZE).await;
+            mirrors
+                .probe(
+                    &probe_http,
+                    &probe,
+                    xmuhub_core::storage::github::PROBE_SIZE,
+                )
+                .await;
             // Once an hour, how fast each mirror keeps going (4 MB, one mirror at a time).
             let hourly = round == 0;
             round = (round + 1) % 4;
             if hourly {
                 if speed_probe.is_none() {
-                    speed_probe = gh2.ensure_speed_probe().await.map_err(|e| tracing::warn!("speed probe asset: {e}")).ok();
+                    speed_probe = gh2
+                        .ensure_speed_probe()
+                        .await
+                        .map_err(|e| tracing::warn!("speed probe asset: {e}"))
+                        .ok();
                 }
                 if let Some(url) = &speed_probe {
                     mirrors.probe_speed(&probe_http, url).await;
@@ -364,7 +474,10 @@ fn spawn_jobs(app: Arc<api::App>, github: Option<Arc<GitHubBackend>>, probe_http
 async fn listener(bind: std::net::SocketAddr) -> anyhow::Result<tokio::net::TcpListener> {
     #[cfg(unix)]
     {
-        let ours = std::env::var("LISTEN_PID").ok().and_then(|p| p.parse::<u32>().ok()) == Some(std::process::id());
+        let ours = std::env::var("LISTEN_PID")
+            .ok()
+            .and_then(|p| p.parse::<u32>().ok())
+            == Some(std::process::id());
         if ours && std::env::var("LISTEN_FDS").ok().as_deref() == Some("1") {
             use std::os::fd::FromRawFd;
             // SAFETY: systemd passes exactly one socket as fd 3 (SD_LISTEN_FDS_START) and
@@ -372,7 +485,10 @@ async fn listener(bind: std::net::SocketAddr) -> anyhow::Result<tokio::net::TcpL
             let l = unsafe { std::net::TcpListener::from_raw_fd(3) };
             l.set_nonblocking(true)?;
             let l = tokio::net::TcpListener::from_std(l)?;
-            tracing::info!("listening on http://{} (socket from systemd)", l.local_addr()?);
+            tracing::info!(
+                "listening on http://{} (socket from systemd)",
+                l.local_addr()?
+            );
             return Ok(l);
         }
     }

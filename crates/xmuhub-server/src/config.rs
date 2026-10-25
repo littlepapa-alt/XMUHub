@@ -4,7 +4,10 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 
 fn var(k: &str) -> Option<String> {
-    std::env::var(k).ok().map(|v| v.trim().to_string()).filter(|v| !v.is_empty())
+    std::env::var(k)
+        .ok()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
 }
 
 fn var_or(k: &str, d: &str) -> String {
@@ -34,6 +37,7 @@ pub const DEFAULT_MIRRORS: &[&str] = &[
 pub enum StorageKind {
     Local,
     GitHub,
+    Cos,
 }
 
 pub struct Config {
@@ -47,6 +51,13 @@ pub struct Config {
     pub gh_backup_repo: String,
     /// Optional proxy for server → GitHub API calls (small requests only).
     pub gh_api_proxy: Option<String>,
+    pub cos_secret_id: String,
+    pub cos_secret_key: String,
+    pub cos_bucket: String,
+    pub cos_region: String,
+    pub cos_endpoint: String,
+    pub cos_signed_url_ttl: u64,
+    pub cos_upload_url_ttl: u64,
     pub worker_url: String,
     pub ticket_secret: Vec<u8>,
     pub mirrors: Vec<String>,
@@ -74,7 +85,8 @@ impl Config {
         let storage = match var_or("XMUHUB_STORAGE", "local").as_str() {
             "github" => StorageKind::GitHub,
             "local" => StorageKind::Local,
-            other => anyhow::bail!("XMUHUB_STORAGE must be `github` or `local`, got `{other}`"),
+            "cos" => StorageKind::Cos,
+            other => anyhow::bail!("XMUHUB_STORAGE must be `github`, `cos` or `local`, got `{other}`"),
         };
         let secret = var("UPLOAD_TICKET_SECRET").unwrap_or_default();
         if matches!(storage, StorageKind::GitHub) {
@@ -84,6 +96,23 @@ impl Config {
                 }
             }
         }
+        let cos_secret_id = var_or("COS_SECRET_ID", "");
+        let cos_secret_key = var_or("COS_SECRET_KEY", "");
+        let cos_bucket = var_or("COS_BUCKET", "");
+        let cos_region = var_or("COS_REGION", "ap-beijing");
+        if matches!(storage, StorageKind::Cos) {
+            for (name, value) in [
+                ("COS_SECRET_ID", &cos_secret_id),
+                ("COS_SECRET_KEY", &cos_secret_key),
+                ("COS_BUCKET", &cos_bucket),
+            ] {
+                if value.is_empty() {
+                    anyhow::bail!("{name} is required when XMUHUB_STORAGE=cos");
+                }
+            }
+        }
+        let cos_endpoint = var("COS_ENDPOINT")
+            .unwrap_or_else(|| format!("https://{}.cos.{}.myqcloud.com", cos_bucket, cos_region));
         Ok(Config {
             bind: var_or("XMUHUB_BIND", "127.0.0.1:8089").parse()?,
             data_dir: var_or("XMUHUB_DATA", "data").into(),
@@ -94,14 +123,37 @@ impl Config {
             gh_repo_prefix: var_or("GH_REPO_PREFIX", "XMUHub-store"),
             gh_backup_repo: var_or("GH_BACKUP_REPO", "XMUHub-backup"),
             gh_api_proxy: var("GH_API_PROXY"),
+            cos_secret_id,
+            cos_secret_key,
+            cos_bucket,
+            cos_region,
+            cos_endpoint,
+            cos_signed_url_ttl: var_or("COS_SIGNED_URL_TTL", "1800").parse()?,
+            cos_upload_url_ttl: var_or("COS_UPLOAD_URL_TTL", "3600").parse()?,
             worker_url: var_or("UPLOAD_WORKER_URL", ""),
             // Local dev still signs its tickets; a random per-process secret is fine there.
-            ticket_secret: if secret.is_empty() { rand_secret() } else { secret.into_bytes() },
+            ticket_secret: if secret.is_empty() {
+                rand_secret()
+            } else {
+                secret.into_bytes()
+            },
             mirrors: var("MIRRORS")
-                .map(|m| m.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect())
+                .map(|m| {
+                    m.split(',')
+                        .map(|s| s.trim().to_string())
+                        .filter(|s| !s.is_empty())
+                        .collect()
+                })
                 .unwrap_or_else(|| DEFAULT_MIRRORS.iter().map(|s| s.to_string()).collect()),
             db_cache_mb: var_or("XMUHUB_DB_CACHE_MB", "32").parse()?,
-            admins: var("XMUHUB_ADMINS").map(|v| v.split(',').map(|s| s.trim().to_lowercase()).filter(|s| !s.is_empty()).collect()).unwrap_or_default(),
+            admins: var("XMUHUB_ADMINS")
+                .map(|v| {
+                    v.split(',')
+                        .map(|s| s.trim().to_lowercase())
+                        .filter(|s| !s.is_empty())
+                        .collect()
+                })
+                .unwrap_or_default(),
             admins_file: var("XMUHUB_ADMINS_FILE").map(Into::into),
             script_token: var("XMUHUB_SCRIPT_TOKEN").filter(|t| t.len() >= 32),
             secure_cookie: var_or("XMUHUB_SECURE_COOKIE", "1") != "0",
@@ -123,8 +175,10 @@ fn smtp_config(prefix: &str, from_key: &str) -> anyhow::Result<Option<crate::mai
     if password.is_none() {
         return Ok(None);
     }
-    let host = host.ok_or_else(|| anyhow::anyhow!("{prefix}HOST is required when {prefix}PASSWORD is set"))?;
-    let user = user.ok_or_else(|| anyhow::anyhow!("{prefix}USER is required when {prefix}PASSWORD is set"))?;
+    let host = host
+        .ok_or_else(|| anyhow::anyhow!("{prefix}HOST is required when {prefix}PASSWORD is set"))?;
+    let user = user
+        .ok_or_else(|| anyhow::anyhow!("{prefix}USER is required when {prefix}PASSWORD is set"))?;
     Ok(Some(crate::mailer::SmtpConfig {
         host,
         port: var_or(&format!("{prefix}PORT"), "465").parse()?,
@@ -136,7 +190,9 @@ fn smtp_config(prefix: &str, from_key: &str) -> anyhow::Result<Option<crate::mai
 
 fn rand_secret() -> Vec<u8> {
     use std::hash::{BuildHasher, RandomState};
-    (0..4).flat_map(|i| RandomState::new().hash_one(i).to_le_bytes()).collect()
+    (0..4)
+        .flat_map(|i| RandomState::new().hash_one(i).to_le_bytes())
+        .collect()
 }
 
 /// Reads the admin list file; a missing file means an empty list.

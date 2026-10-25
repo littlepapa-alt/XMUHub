@@ -11,13 +11,16 @@ use crate::storage::github::{RepoFile, RepoScan};
 use crate::text::guess_name;
 
 /// File types imported from repositories: documents and archives, no source code.
-pub const DOC_EXTS: &[&str] = &["pdf", "doc", "docx", "ppt", "pptx", "pptm", "xls", "xlsx", "epub", "zip", "rar", "7z", "caj"];
+pub const DOC_EXTS: &[&str] = &[
+    "pdf", "doc", "docx", "ppt", "pptx", "pptm", "xls", "xlsx", "epub", "zip", "rar", "7z", "caj",
+];
 
 /// Git LFS pointer files are about 130 bytes; anything this big is a real file.
 pub const LFS_POINTER_MAX: u64 = 1024;
 
 pub fn is_doc(path: &str) -> bool {
-    path.rsplit_once('.').is_some_and(|(_, e)| DOC_EXTS.contains(&e.to_lowercase().as_str()))
+    path.rsplit_once('.')
+        .is_some_and(|(_, e)| DOC_EXTS.contains(&e.to_lowercase().as_str()))
 }
 
 /// The folder a file is grouped under: its first `depth` directories.
@@ -49,7 +52,9 @@ fn mime_of(ext: &str) -> &'static str {
         "doc" => "application/msword",
         "docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         "ppt" => "application/vnd.ms-powerpoint",
-        "pptx" | "pptm" => "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "pptx" | "pptm" => {
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+        }
         "xls" => "application/vnd.ms-excel",
         "xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         "epub" => "application/epub+zip",
@@ -63,21 +68,48 @@ impl Hub {
     /// `mapping(group)` gives the target node for each file group; unmapped groups are skipped.
     /// Re-running is safe: a file already imported into the same node is skipped.
     /// `major` (专业, may be empty) labels every imported file, for repos kept per major.
-    pub fn import_repo(&self, actor: Viewer, scan: &RepoScan, depth: usize, major: &str, mapping: &dyn Fn(&str) -> Option<Id>) -> Result<ImportReport> {
+    pub fn import_repo(
+        &self,
+        actor: Viewer,
+        scan: &RepoScan,
+        depth: usize,
+        major: &str,
+        mapping: &dyn Fn(&str) -> Option<Id>,
+    ) -> Result<ImportReport> {
         let me = actor.at_least(Level::Reviewer)?.clone();
         let major = clean(major, 20);
-        let license = if scan.license.is_empty() { String::new() } else { format!("，{} 许可", scan.license) };
+        let license = if scan.license.is_empty() {
+            String::new()
+        } else {
+            format!("，{} 许可", scan.license)
+        };
         let note = format!("来源：GitHub {}/{}{license}", scan.owner, scan.repo);
-        let files: Vec<(&RepoFile, Id)> = scan.files.iter().filter(|f| is_doc(&f.path)).filter_map(|f| Some((f, mapping(&group_of(&f.path, depth))?))).collect();
-        let mut report = ImportReport { unmapped: scan.files.iter().filter(|f| is_doc(&f.path)).count() - files.len(), ..Default::default() };
+        let files: Vec<(&RepoFile, Id)> = scan
+            .files
+            .iter()
+            .filter(|f| is_doc(&f.path))
+            .filter_map(|f| Some((f, mapping(&group_of(&f.path, depth))?)))
+            .collect();
+        let mut report = ImportReport {
+            unmapped: scan.files.iter().filter(|f| is_doc(&f.path)).count() - files.len(),
+            ..Default::default()
+        };
         let mut touched: Vec<Id> = Vec::new();
         for chunk in files.chunks(200) {
             let (created, skipped, ids) = self.mutate(|st, tx| {
                 let (mut created, mut skipped, mut ids) = (0, 0, Vec::new());
                 for (f, node) in chunk {
                     let key = format!("git-{}", f.sha);
-                    let node = st.resolve(*node).map(|n| n.id).ok_or(Error::NotFound("分类"))?;
-                    let dup = st.by_node.get(&node).into_iter().flatten().any(|id| st.resources[id].blob == key);
+                    let node = st
+                        .resolve(*node)
+                        .map(|n| n.id)
+                        .ok_or(Error::NotFound("分类"))?;
+                    let dup = st
+                        .by_node
+                        .get(&node)
+                        .into_iter()
+                        .flatten()
+                        .any(|id| st.resources[id].blob == key);
                     if dup {
                         skipped += 1;
                         continue;
@@ -103,8 +135,15 @@ impl Hub {
                     }
                     // Guess from the path below the group folder: sub-folders often say 期末/实验.
                     let group = group_of(&f.path, depth);
-                    let rel = f.path.strip_prefix(&group).unwrap_or(&f.path).trim_start_matches('/');
-                    let (stem, ext) = rel.rsplit_once('.').map(|(s, e)| (s, e.to_lowercase())).unwrap_or((rel, String::new()));
+                    let rel = f
+                        .path
+                        .strip_prefix(&group)
+                        .unwrap_or(&f.path)
+                        .trim_start_matches('/');
+                    let (stem, ext) = rel
+                        .rsplit_once('.')
+                        .map(|(s, e)| (s, e.to_lowercase()))
+                        .unwrap_or((rel, String::new()));
                     let mut g = guess_name(stem, &ext);
                     // Repos kept as 学期/课程/文件 put the time in a folder, not the file name.
                     if g.time.is_empty() {
@@ -123,17 +162,29 @@ impl Hub {
                         subtitle: None,
                         major: None,
                     };
-                    let extras = AdminExtras { free_type: true, ..Default::default() };
+                    let extras = AdminExtras {
+                        free_type: true,
+                        ..Default::default()
+                    };
                     let (name, tag) = Self::build_name(st, &input, &extras, true, None)?;
                     let r = Resource {
                         id: st.next_id(tx)?,
                         node,
                         tag,
                         name,
-                        ext: if ext.len() <= 8 { ext.clone() } else { String::new() },
+                        ext: if ext.len() <= 8 {
+                            ext.clone()
+                        } else {
+                            String::new()
+                        },
                         note: note.clone(),
                         original_name: clean(&f.path, 200),
-                        source: format!("github:{}/{}@{}", scan.owner, scan.repo, &scan.commit[..scan.commit.len().min(12)]),
+                        source: format!(
+                            "github:{}/{}@{}",
+                            scan.owner,
+                            scan.repo,
+                            &scan.commit[..scan.commit.len().min(12)]
+                        ),
                         uncertain: true,
                         blob: key,
                         size: f.size,
@@ -171,14 +222,31 @@ impl Hub {
         let mut out = Vec::new();
         let mut bytes = 0u64;
         // Empty files stay referenced: GitHub refuses 0-byte release assets.
-        let mut keys: Vec<&Blob> = st.blobs.values().filter(|b| b.size > 0 && b.parts.iter().any(|p| !p.replicas.iter().any(Location::owned))).collect();
+        let mut keys: Vec<&Blob> = st
+            .blobs
+            .values()
+            .filter(|b| {
+                b.size > 0
+                    && b.parts
+                        .iter()
+                        .any(|p| !p.replicas.iter().any(Location::owned))
+            })
+            .collect();
         keys.sort_by_key(|b| b.created_at);
         for b in keys {
             if out.len() >= limit || bytes + b.size > max_bytes {
                 break;
             }
             // Referenced blobs are always a single part.
-            let Some(Location::GitHubRepo { owner, repo, commit, path }) = b.parts.first().and_then(|p| p.replicas.first()) else { continue };
+            let Some(Location::GitHubRepo {
+                owner,
+                repo,
+                commit,
+                path,
+            }) = b.parts.first().and_then(|p| p.replicas.first())
+            else {
+                continue;
+            };
             bytes += b.size;
             out.push(Unpersisted {
                 key: b.key.clone(),
@@ -192,9 +260,21 @@ impl Hub {
 
     /// Adds our own copy of a referenced blob; it becomes the preferred download source.
     pub fn attach_replica(&self, key: &str, loc: Location, sha256: &str) -> Result<()> {
+        self.attach_part_replica(key, 0, loc, sha256)
+    }
+
+    /// Adds an own-storage replica to a particular part after an external migration
+    /// client has uploaded and verified it.
+    pub fn attach_part_replica(
+        &self,
+        key: &str,
+        index: usize,
+        loc: Location,
+        sha256: &str,
+    ) -> Result<()> {
         self.mutate(|st, tx| {
             let mut b = st.blobs.get(key).cloned().ok_or(Error::NotFound("文件"))?;
-            let part = b.parts.first_mut().ok_or(Error::NotFound("文件"))?;
+            let part = b.parts.get_mut(index).ok_or(Error::NotFound("文件分片"))?;
             if part.replicas.iter().any(|l| l == &loc) {
                 return Ok(());
             }
@@ -208,10 +288,38 @@ impl Hub {
         })
     }
 
+    /// Returns one stored blob for an administrator-run external migration client.
+    pub fn blob(&self, key: &str) -> Option<Blob> {
+        self.st.read().blobs.get(key).cloned()
+    }
+
+    /// Returns all blobs for which at least one part still lacks a COS replica.
+    pub fn blobs_needing_cos(&self) -> Vec<Blob> {
+        self.st
+            .read()
+            .blobs
+            .values()
+            .filter(|b| {
+                b.parts
+                    .iter()
+                    .any(|p| !p.replicas.iter().any(|l| matches!(l, Location::Cos { .. })))
+            })
+            .cloned()
+            .collect()
+    }
+
     /// (blobs only referenced, blobs with an own copy) — for the admin status page.
     pub fn transfer_counts(&self) -> (usize, usize) {
         let st = self.st.read();
-        let refs = st.blobs.values().filter(|b| b.parts.iter().any(|p| !p.replicas.iter().any(Location::owned))).count();
+        let refs = st
+            .blobs
+            .values()
+            .filter(|b| {
+                b.parts
+                    .iter()
+                    .any(|p| !p.replicas.iter().any(Location::owned))
+            })
+            .count();
         (refs, st.blobs.len() - refs)
     }
 
@@ -232,7 +340,11 @@ impl Hub {
             b.parts[0].size = size;
             tx.put_blob(&b)?;
             st.blobs.insert(b.key.clone(), b);
-            for r in st.resources.values_mut().filter(|r| r.blob == key && r.size == old) {
+            for r in st
+                .resources
+                .values_mut()
+                .filter(|r| r.blob == key && r.size == old)
+            {
                 r.size = size;
                 tx.put_resource(r)?;
             }

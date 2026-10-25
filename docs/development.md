@@ -63,10 +63,13 @@ XMUHUB_ADMINS=you@example.com XMUHUB_SECURE_COOKIE=0 cargo run -p xmuhub-server 
 
 | 变量 | 说明 |
 |---|---|
-| `XMUHUB_STORAGE` | `local` 或 `github` |
+| `XMUHUB_STORAGE` | `local`、`github` 或 `cos` |
 | `XMUHUB_BIND` / `XMUHUB_DATA` / `XMUHUB_WEB` | 监听地址、数据目录、网页目录 |
 | `XMUHUB_SITE` / `XMUHUB_SITE_DIR` | 用哪个站点文件夹（默认 `site/xmu`；部署后是 `web/_site`） |
 | `GH_STORE_USER` / `GH_STORE_TOKEN` | 存储账号和它的 token |
+| `COS_SECRET_ID` / `COS_SECRET_KEY` | COS API 密钥（只放 `.secrets/cos.env`） |
+| `COS_BUCKET` / `COS_REGION` / `COS_ENDPOINT` | COS Bucket、地域和可选原生域名 |
+| `COS_SIGNED_URL_TTL` / `COS_UPLOAD_URL_TTL` | 下载和上传临时链接的秒数 |
 | `UPLOAD_TICKET_SECRET` | 签名上传凭证用的密钥 |
 | `UPLOAD_WORKER_URL` | 留空时由服务器中转上传；填 Worker 地址则改走 Worker |
 | `RELAY_DAILY_MB` / `RELAY_CONCURRENCY` | 服务器中转的每日流量上限、并发上限 |

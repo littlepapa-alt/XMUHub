@@ -13,7 +13,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use xmuhub_core::hub::{AdminExtras, CodePurpose, NodeInput, NodePatch, PartSpec, Registration, ResourceInput, SearchItem, SeriesText, Viewer};
-use xmuhub_core::model::{Id, Level, Node, NodeStatus, Report, Resource, Status, TYPE_WORDS, Tag, User, now};
+use xmuhub_core::model::{Id, Level, Location, Node, NodeStatus, Report, Resource, Status, TYPE_WORDS, Tag, User, now};
 use xmuhub_core::search::{DocType, Filter};
 use xmuhub_core::storage::Receipt;
 use xmuhub_core::storage::local::LocalBackend;
@@ -418,6 +418,8 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/admin/github/import", post(gh_import))
         .route("/admin/github/transfer", get(gh_transfer).post(gh_transfer_kick))
         .route("/admin/thumbs", get(thumbs_status).post(thumbs_kick))
+        .route("/admin/storage/cos/migration", get(cos_migration).post(cos_migration_prepare))
+        .route("/admin/storage/cos/migration/confirm", post(cos_migration_confirm))
         .route("/relay/upload", post(crate::relay::upload).layer(axum::extract::DefaultBodyLimit::disable()))
         .route("/local/upload", put(local_upload).layer(axum::extract::DefaultBodyLimit::disable()))
         .route("/local/file/{name}", get(local_file))
@@ -1929,6 +1931,136 @@ async fn gh_transfer_kick(State(app): S, auth: Auth) -> R<Json<Value>> {
     let gh = app.github.as_ref().ok_or_else(|| bad("GitHub 存储未启用"))?;
     crate::transfer::kick(&app.hub, gh).await.map_err(|e| ApiError(Error::Upstream(e.to_string())))?;
     Ok(Json(json!({ "current": crate::transfer::current_job(&app.hub) })))
+}
+
+#[derive(Deserialize)]
+struct CosMigrationQuery {
+    #[serde(default = "default_migration_limit")]
+    limit: usize,
+    #[serde(default = "default_migration_bytes")]
+    max_bytes: u64,
+}
+
+fn default_migration_limit() -> usize {
+    20
+}
+
+fn default_migration_bytes() -> u64 {
+    5 * 1024 * 1024 * 1024
+}
+
+#[derive(Deserialize)]
+struct CosMigrationPart {
+    #[serde(alias = "key")]
+    blob: String,
+    index: usize,
+    size: u64,
+    sha256: String,
+}
+
+fn require_cos_storage(app: &App) -> R<()> {
+    if app.hub.storage.primary_name() == "cos" {
+        Ok(())
+    } else {
+        Err(bad("网站主存储还不是 COS"))
+    }
+}
+
+/// Lists parts that still need a COS copy. Source URLs are limited to external replicas so
+/// the migration script can fetch bytes on the operator's computer without using this server
+/// as a file proxy.
+async fn cos_migration(State(app): S, auth: Auth, Query(q): Query<CosMigrationQuery>) -> R<Json<Value>> {
+    require_admin(&auth)?;
+    require_cos_storage(&app)?;
+    let limit = q.limit.clamp(1, 200);
+    let max_bytes = q.max_bytes.clamp(1, 20 * 1024 * 1024 * 1024);
+    let mut items = Vec::new();
+    let mut bytes = 0u64;
+    for blob in app.hub.blobs_needing_cos() {
+        let mut parts = Vec::new();
+        let mut blob_bytes = 0u64;
+        for (index, part) in blob.parts.iter().enumerate() {
+            if part.replicas.iter().any(|loc| matches!(loc, Location::Cos { .. })) {
+                continue;
+            }
+            if bytes.saturating_add(part.size) > max_bytes {
+                break;
+            }
+            let source_urls: Vec<String> = part
+                .replicas
+                .iter()
+                .filter(|loc| matches!(loc, Location::GitHub { .. } | Location::GitHubRepo { .. }))
+                .flat_map(|loc| app.hub.storage.download_urls(std::slice::from_ref(loc)))
+                .collect();
+            let local_name = part.replicas.iter().find_map(|loc| match loc {
+                Location::Local { path } => Some(path.clone()),
+                _ => None,
+            });
+            blob_bytes = blob_bytes.saturating_add(part.size);
+            parts.push(json!({
+                "index": index,
+                "size": part.size,
+                "sha256": part.sha256,
+                "sources": source_urls,
+                "local_name": local_name,
+            }));
+        }
+        if !parts.is_empty() && items.len() < limit {
+            bytes = bytes.saturating_add(blob_bytes);
+            items.push(json!({ "key": blob.key, "size": blob.size, "parts": parts }));
+        }
+        if items.len() >= limit || bytes >= max_bytes {
+            break;
+        }
+    }
+    Ok(Json(json!({ "primary": "cos", "items": items, "bytes": bytes })))
+}
+
+async fn cos_migration_prepare(
+    State(app): S,
+    auth: Auth,
+    Json(input): Json<CosMigrationPart>,
+) -> R<Json<Value>> {
+    require_admin(&auth)?;
+    require_cos_storage(&app)?;
+    let blob = app.hub.blob(&input.blob).ok_or(Error::NotFound("文件"))?;
+    let part = blob.parts.get(input.index).ok_or(Error::NotFound("文件分片"))?;
+    if part.size != input.size || part.sha256 != input.sha256 {
+        return Err(ApiError(Error::Conflict("迁移参数与数据库记录不一致".into())));
+    }
+    if part.replicas.iter().any(|loc| matches!(loc, Location::Cos { .. })) {
+        return Err(ApiError(Error::Conflict("该分片已经迁移到 COS".into())));
+    }
+    let reserved = app.hub.storage.primary().reserve("migration", input.size, &input.sha256).await?;
+    let target = app.hub.storage.primary().upload_target(&reserved, input.size)?;
+    Ok(Json(json!({ "blob": input.blob, "index": input.index, "size": input.size, "sha256": input.sha256, "target": target })))
+}
+
+async fn cos_migration_confirm(
+    State(app): S,
+    auth: Auth,
+    Json(input): Json<CosMigrationPart>,
+) -> R<Json<Value>> {
+    require_admin(&auth)?;
+    require_cos_storage(&app)?;
+    let blob = app.hub.blob(&input.blob).ok_or(Error::NotFound("文件"))?;
+    let part = blob.parts.get(input.index).ok_or(Error::NotFound("文件分片"))?;
+    if part.size != input.size || part.sha256 != input.sha256 {
+        return Err(ApiError(Error::Conflict("迁移参数与数据库记录不一致".into())));
+    }
+    let loc = Location::Cos { key: format!("blobs/{}", input.sha256) };
+    let confirmed = app
+        .hub
+        .storage
+        .primary()
+        .confirm(&loc, input.size, &input.sha256, &Receipt::default())
+        .await?;
+    let hub = app.hub.clone();
+    let key = input.blob.clone();
+    let sha256 = input.sha256.clone();
+    let index = input.index;
+    blocking(move || hub.attach_part_replica(&key, index, confirmed, &sha256)).await?;
+    Ok(Json(json!({ "ok": true, "blob": input.blob, "index": input.index })))
 }
 
 async fn thumbs_status(State(app): S, auth: Auth) -> R<Json<Value>> {

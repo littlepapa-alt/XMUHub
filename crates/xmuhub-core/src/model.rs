@@ -325,7 +325,11 @@ impl NameParts {
     }
 
     pub fn stem(&self) -> String {
-        if self.version > 1 { format!("{}_v{}", self.base(), self.version) } else { self.base() }
+        if self.version > 1 {
+            format!("{}_v{}", self.base(), self.version)
+        } else {
+            self.base()
+        }
     }
 }
 
@@ -361,7 +365,11 @@ pub struct Resource {
 
 impl Resource {
     pub fn filename(&self) -> String {
-        if self.ext.is_empty() { self.name.stem() } else { format!("{}.{}", self.name.stem(), self.ext) }
+        if self.ext.is_empty() {
+            self.name.stem()
+        } else {
+            format!("{}.{}", self.name.stem(), self.ext)
+        }
     }
 }
 
@@ -402,6 +410,11 @@ pub enum Location {
         commit: String,
         path: String,
     },
+    /// A private Tencent Cloud COS object addressed by its content hash.
+    /// Appended last so existing postcard records keep their variant indices.
+    Cos {
+        key: String,
+    },
 }
 
 impl Location {
@@ -410,6 +423,7 @@ impl Location {
             Location::Local { .. } => "local",
             Location::GitHub { .. } => "github",
             Location::GitHubRepo { .. } => "github-repo",
+            Location::Cos { .. } => "cos",
         }
     }
 
