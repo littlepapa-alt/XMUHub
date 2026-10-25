@@ -60,6 +60,13 @@ pub trait StorageBackend: Send + Sync {
 
     /// Download URLs for a stored part, best first.
     fn download_urls(&self, loc: &Location) -> Vec<String>;
+
+    /// Download URLs with a suggested filename. Backends that can set response
+    /// headers on their signed URL may override this; other backends keep their
+    /// normal URLs and the browser-side Blob path supplies the filename.
+    fn download_urls_for(&self, loc: &Location, _filename: &str) -> Vec<String> {
+        self.download_urls(loc)
+    }
     // Deliberately no `delete`: material files are never deleted through the system (AGENTS.md §4).
 }
 
@@ -93,12 +100,18 @@ impl Storage {
     /// URLs across every replica of a part, best first.
     /// Our own copies come before references into other people's repositories.
     pub fn download_urls(&self, replicas: &[Location]) -> Vec<String> {
+        self.download_urls_for(replicas, "")
+    }
+
+    /// URLs for a resource download, including its user-facing filename when a
+    /// backend supports it.
+    pub fn download_urls_for(&self, replicas: &[Location], filename: &str) -> Vec<String> {
         let (owned, refs): (Vec<&Location>, Vec<&Location>) =
             replicas.iter().partition(|l| l.owned());
         owned
             .into_iter()
             .chain(refs)
-            .filter_map(|l| self.for_location(l).ok().map(|b| b.download_urls(l)))
+            .filter_map(|l| self.for_location(l).ok().map(|b| b.download_urls_for(l, filename)))
             .flatten()
             .collect()
     }

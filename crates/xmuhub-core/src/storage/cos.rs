@@ -15,6 +15,7 @@ use sha1::{Digest, Sha1};
 use super::{Receipt, StorageBackend, UploadTarget};
 use crate::error::{Error, Result, bad};
 use crate::model::Location;
+use crate::text::ascii_filename;
 
 const PATH_ENCODE_SET: &AsciiSet = &NON_ALPHANUMERIC
     .remove(b'-')
@@ -95,7 +96,14 @@ impl CosBackend {
             .as_secs()
     }
 
-    fn sign_url(&self, method: &str, key: &str, headers: &[(&str, &str)], ttl: u64) -> String {
+    fn sign_url(
+        &self,
+        method: &str,
+        key: &str,
+        headers: &[(&str, &str)],
+        params: &[(&str, &str)],
+        ttl: u64,
+    ) -> String {
         // Match Tencent's SDK signing window: allow a small amount of clock
         // skew before the request reaches COS.
         let start = Self::now().saturating_sub(60);
@@ -120,7 +128,22 @@ impl CosBackend {
             .map(|(name, value)| format!("{name}={value}"))
             .collect::<Vec<_>>()
             .join("&");
-        let http_string = format!("{}\n{uri}\n\n{header_text}\n", method.to_ascii_lowercase());
+        let mut canonical_params: Vec<(String, String)> = params
+            .iter()
+            .map(|(name, value)| (name.to_ascii_lowercase(), encode_component(value)))
+            .collect();
+        canonical_params.sort_by(|a, b| a.0.cmp(&b.0));
+        let param_list = canonical_params
+            .iter()
+            .map(|(name, _)| name.as_str())
+            .collect::<Vec<_>>()
+            .join(";");
+        let param_text = canonical_params
+            .iter()
+            .map(|(name, value)| format!("{name}={value}"))
+            .collect::<Vec<_>>()
+            .join("&");
+        let http_string = format!("{}\n{uri}\n{param_text}\n{header_text}\n", method.to_ascii_lowercase());
         let http_string_sha1 = hex::encode(Sha1::digest(http_string.as_bytes()));
         let string_to_sign = format!("sha1\n{key_time}\n{http_string_sha1}\n");
 
@@ -136,10 +159,15 @@ impl CosBackend {
         let signature = hex::encode(signature.finalize().into_bytes());
 
         let auth = format!(
-            "q-sign-algorithm=sha1&q-ak={}&q-sign-time={key_time}&q-key-time={key_time}&q-header-list={header_list}&q-url-param-list=&q-signature={signature}",
+            "q-sign-algorithm=sha1&q-ak={}&q-sign-time={key_time}&q-key-time={key_time}&q-header-list={header_list}&q-url-param-list={param_list}&q-signature={signature}",
             encode_component(&self.cfg.secret_id),
         );
-        format!("{}?{auth}", self.object_url(key))
+        let query = if param_text.is_empty() {
+            auth
+        } else {
+            format!("{param_text}&{auth}")
+        };
+        format!("{}?{query}", self.object_url(key))
     }
 }
 
@@ -165,6 +193,7 @@ impl StorageBackend for CosBackend {
             "PUT",
             key,
             &[("x-cos-meta-sha256", sha256)],
+            &[],
             self.cfg.upload_url_ttl,
         );
         Ok(UploadTarget {
@@ -185,7 +214,7 @@ impl StorageBackend for CosBackend {
         if Self::sha256_from_key(key)? != sha256 {
             return Err(Error::Conflict("COS 对象地址与文件校验值不一致".into()));
         }
-        let url = self.sign_url("HEAD", key, &[], self.cfg.signed_url_ttl);
+        let url = self.sign_url("HEAD", key, &[], &[], self.cfg.signed_url_ttl);
         let response = self.http.head(url).send().await?;
         if response.status() == StatusCode::NOT_FOUND {
             return Err(Error::Conflict("COS 中还没有收到文件，请重试".into()));
@@ -215,10 +244,20 @@ impl StorageBackend for CosBackend {
     }
 
     fn download_urls(&self, loc: &Location) -> Vec<String> {
+        self.download_urls_for(loc, "")
+    }
+
+    fn download_urls_for(&self, loc: &Location, filename: &str) -> Vec<String> {
         let Ok(key) = Self::key_of(loc) else {
             return Vec::new();
         };
-        vec![self.sign_url("GET", key, &[], self.cfg.signed_url_ttl)]
+        let disposition = content_disposition(filename);
+        let params = if disposition.is_empty() {
+            Vec::new()
+        } else {
+            vec![("response-content-disposition", disposition.as_str())]
+        };
+        vec![self.sign_url("GET", key, &[], &params, self.cfg.signed_url_ttl)]
     }
 }
 
@@ -228,6 +267,17 @@ fn encode_component(value: &str) -> String {
 
 fn encode_path(path: &str) -> String {
     utf8_percent_encode(path, PATH_ENCODE_SET).to_string()
+}
+
+/// Ask COS to keep the generated site's filename when the browser navigates
+/// directly to a signed URL (the CORS fetch path already uses this name).
+fn content_disposition(filename: &str) -> String {
+    if filename.is_empty() {
+        return String::new();
+    }
+    let ascii = ascii_filename(filename);
+    let utf8 = encode_component(filename);
+    format!("attachment; filename=\"{ascii}\"; filename*=UTF-8''{utf8}")
 }
 
 #[cfg(test)]
@@ -252,10 +302,27 @@ mod tests {
     #[test]
     fn signs_private_object_urls_without_exposing_secret_key() {
         let b = backend();
-        let url = b.sign_url("GET", "blobs/0123456789abcdef", &[], 1800);
+        let url = b.sign_url("GET", "blobs/0123456789abcdef", &[], &[], 1800);
         assert!(url.starts_with("https://materials-123.cos.ap-beijing.myqcloud.com/blobs/"));
         assert!(url.contains("q-signature="));
         assert!(!url.contains("secret"));
+    }
+
+    #[test]
+    fn signs_response_filename_as_a_cos_query_parameter() {
+        let b = backend();
+        let url = b
+            .download_urls_for(
+                &Location::Cos { key: "blobs/0123456789abcdef".into() },
+                "微波技术_实验资料.pdf",
+            )
+            .pop()
+            .unwrap();
+        assert!(url.contains("response-content-disposition="));
+        assert!(url.contains("q-url-param-list=response-content-disposition"));
+        // The response header contains UTF-8 percent escapes, so the URL
+        // carries them encoded one more time as a query value.
+        assert!(url.contains("%25E5%25BE%25AE%25E6%25B3%25A2%25E6%258A%2580%25E6%259C%25AF"));
     }
 
     #[test]

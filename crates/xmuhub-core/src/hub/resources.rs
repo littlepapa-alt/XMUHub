@@ -726,14 +726,19 @@ impl Hub {
                 .filter(|r| viewer.can_see(r) && r.status != Status::Rejected)
                 .ok_or(Error::NotFound("资料"))?;
             let b = st.blobs.get(&r.blob).ok_or(Error::NotFound("文件"))?;
+            let filename = r.filename();
             DownloadPlan {
-                filename: r.filename(),
+                filename: filename.clone(),
                 size: r.size,
                 mime: r.mime.clone(),
                 parts: b
                     .parts
                     .iter()
-                    .map(|p| DownloadPart { size: p.size, sha256: p.sha256.clone(), urls: self.storage.download_urls(&p.replicas) })
+                    .map(|p| DownloadPart {
+                        size: p.size,
+                        sha256: p.sha256.clone(),
+                        urls: self.storage.download_urls_for(&p.replicas, &filename),
+                    })
                     .collect(),
             }
         };

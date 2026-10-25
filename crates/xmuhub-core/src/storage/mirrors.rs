@@ -4,7 +4,7 @@
 //! serve the first few hundred KB quickly and then throttle to a crawl. Ranked by that speed;
 //! direct GitHub is always kept as the last resort.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
 
 use parking_lot::RwLock;
@@ -76,6 +76,12 @@ impl Mirrors {
         let cors = self.cors.read();
         let mut out: Vec<String> = urls.iter().filter(|u| u.starts_with("/api/local/file/")).cloned().collect();
         out.extend(cors.iter().filter_map(|p| urls.iter().find(|u| u.starts_with(p.as_str()) && u[p.len()..].starts_with('/'))).cloned());
+        // COS is a browser-direct backend. Its bucket CORS policy is configured
+        // by the deployment; include its signed URL so preview can use it when
+        // that policy allows the site's origin.
+        out.extend(urls.iter().filter(|u| is_cos_url(u)).cloned());
+        let mut seen = HashSet::new();
+        out.retain(|url| seen.insert(url.clone()));
         out
     }
 
@@ -191,6 +197,13 @@ impl Mirrors {
     }
 }
 
+fn is_cos_url(url: &str) -> bool {
+    let Some(host) = url.strip_prefix("https://").and_then(|s| s.split(['/', '?']).next()) else {
+        return false;
+    };
+    host.ends_with(".myqcloud.com") && host.contains(".cos.")
+}
+
 #[cfg(test)]
 mod tests {
     use super::{MirrorStat, Mirrors};
@@ -199,6 +212,13 @@ mod tests {
     fn local_files_are_readable_by_same_origin_previews() {
         let mirrors = Mirrors::new(vec![]);
         let urls = vec!["/api/local/file/abc123".to_string()];
+        assert_eq!(mirrors.cors_urls(&urls), urls);
+    }
+
+    #[test]
+    fn cos_urls_are_available_for_browser_previews() {
+        let mirrors = Mirrors::new(vec![]);
+        let urls = vec!["https://materials-123.cos.ap-beijing.myqcloud.com/blobs/hash".to_string()];
         assert_eq!(mirrors.cors_urls(&urls), urls);
     }
 
