@@ -59,6 +59,14 @@
 - 网页检查 `node scripts/check-web.mjs .`、规则检查与 `git diff --check` 通过。规则检查器在中文目录下 URL 解码有问题，本轮运行仅修正 root 路径的临时副本 `/tmp/college-rules-check.mjs`，未改仓库检查器。
 - 用户已授权提交、推送并发布当前版本；每个后续项目完成时继续更新本文件。后续新设计如需上线，应遵循用户当时的发布要求。
 
+本次上线结果（2026-10-26）：
+
+- 前端版本 `c431c8b` 已通过 `bash scripts/deploy-web.sh` 发布到 `http://49.232.142.58/`，代码已推送 `codex/college-site-setup`。此次只替换网页，未替换后端二进制或修改数据库、邮箱、COS 配置。
+- 发布前已确认公网首页显示维护公告；服务重启和健康检查通过后，部署脚本撤下公告。随后核对 `xmuhub.service` 为 active，维护状态为“正常运行”。
+- 旧版网页及原部署标记备份在服务器 `/opt/xmuhub/releases/web-before-rounded-20261026.tar.gz`。需要回退时，先发布维护公告，将归档解压到临时目录并检查，再替换 `/opt/xmuhub/web`、恢复归档中的 DEPLOYED 标记及 xmuhub 所有权，重启服务并验证后撤下公告；不要覆盖后端或数据目录。
+- 真实线上浏览器检查：首页、目录和登录页响应正常；校园背景图、动态脚本、字体 CSS 与 WOFF2 均成功加载，标题实际使用 Campus Rounded。鼠标联动、文字稳定、移开回中、减少动态效果和触屏静止均通过；桌面与手机无横向溢出，无 JS 运行错误或缺失静态资源。
+- 线上截图及检查记录在本机 `/tmp/college-rounded-production/`，临时检查脚本为 `/tmp/college-rounded-production-check.mjs`。本次使用未登录会话核对页面，没有重新执行注册、上传、审核和 COS 下载全链路；这些功能不在本轮改动范围内。
+
 site.json 中仍保留 repo 字段，因为项目采用 AGPL-3.0。页面是否显示链接和是否保留源码配置是两件事，后续不要随意删掉 repo 字段。
 
 ## 3. 课程和资料
@@ -95,7 +103,7 @@ site.json 中仍保留 repo 字段，因为项目采用 AGPL-3.0。页面是否�
 
 数据库是 redb 嵌入式数据库，账号、分类、资源元数据和审核状态在服务器数据目录中。
 
-已检查到服务器部署标记：
+此前 COS 修复时记录的服务器部署标记（历史记录，当前网页版本见第 2 节）：
 
 ~~~text
 backend=manual COS signature-fix build (线上二进制)
