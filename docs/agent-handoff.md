@@ -1,6 +1,6 @@
 # 「吉大电子资料库」项目交接说明
 
-更新时间：2026-10-26  
+更新时间：2026-10-26
 项目目录：/Users/lyb/Documents/ChatGPT/项目/college-materials
 
 ## 1. 项目目标
