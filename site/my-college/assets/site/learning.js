@@ -27,5 +27,5 @@ export function ancestors(t, node) {
 
 export function courseCard(node, t) {
   const path = ancestors(t, node);
-  return `<article class="course-card"><div class="course-card-mark" aria-hidden="true">电子 / JLU</div><div class="course-card-body"><div class="course-path">${esc(path.map(p => p.name).join(' / ') || '课程资料')}</div><h2><a href="/n/${node.id}">${esc(node.name)}</a></h2><p>${node.aliases?.length ? `又名 ${esc(node.aliases.join('、'))}` : '课件、笔记、试卷与实验资料'}</p><div class="course-card-bottom"><span>${node.count ? `${node.count} 份资料` : '等待同学分享'}</span><a href="/n/${node.id}" aria-label="查看${esc(node.name)}课程资料">进入课程 →</a></div></div></article>`;
+  return `<article class="course-card"><div class="course-card-body"><div class="course-path">${esc(path.map(p => p.name).join(' / ') || '课程资料')}</div><h2><a href="/n/${node.id}">${esc(node.name)}</a></h2>${node.aliases?.length ? `<p>又名 ${esc(node.aliases.join('、'))}</p>` : ''}<div class="course-card-bottom"><span>${node.count ? `${node.count} 份资料` : '暂无资料'}</span><a href="/n/${node.id}" aria-label="查看${esc(node.name)}课程资料">查看资料 →</a></div></div></article>`;
 }

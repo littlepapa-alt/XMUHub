@@ -1,5 +1,9 @@
+@import url('./fonts/rounded.css');
+
 /* One palette for courses, account pages, help and staff tools. */
 body {
+  --font:"Campus Rounded", ui-rounded, "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-heading:var(--font);
   --navy:#153b46; --navy-2:#245562; --navy-soft:#e5eef0; --on-navy:#fff;
   --accent:#ad6547; --gold:#a17a4b;
   --bg:#f7f8f6; --surface:#fff; --surface-2:#f0f3f1; --line:#dce3df;
@@ -9,6 +13,7 @@ body {
   background:var(--bg); color:var(--text); color-scheme:light;
 }
 body::before, body::after { display:none; }
+html:not(.seen) body[data-page="home"] :is(.top, .foot, .fbfab) { animation:none; }
 body h1, body h2, body h3 { font-family:var(--font); font-weight:600; }
 body a:focus-visible, body button:focus-visible, body input:focus-visible,
 body textarea:focus-visible, body select:focus-visible { outline:3px solid #c77550; outline-offset:3px; }
@@ -92,6 +97,7 @@ html.nav-busy::after { background:#c77550; }
   body .foot { padding:24px 0 92px; }
   body .foot .wrap { padding-right:24px; gap:10px; }
   body .foot .footer-links { gap:8px 18px; }
+  body .fbfab { position:static; display:block; width:auto; margin:16px 16px 24px auto; }
 }
 @media print {
   body { background:#fff; }

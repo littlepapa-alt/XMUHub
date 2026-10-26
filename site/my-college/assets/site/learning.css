@@ -6,7 +6,13 @@
 .learning .btn, .learning .input, .learning select, .learning .chip { border-radius:4px; }
 .learning a:focus-visible, .learning button:focus-visible, .learning select:focus-visible { outline:3px solid #c77550; outline-offset:3px; }
 body:has(.learning-home) main { padding:0; }
-.campus-hero { background:linear-gradient(90deg,rgba(10,35,44,.92),rgba(10,35,44,.58) 65%,rgba(10,35,44,.24)),url('/assets/site/background.jpg') center 48% / cover; padding:72px 0 60px; color:#fff; }
+.campus-hero { position:relative; isolation:isolate; overflow:hidden; background:#0a232c; padding:72px 0 60px; color:#fff; }
+.campus-hero::before { content:""; position:absolute; z-index:-2; inset:-24px; background:url('/assets/site/background.jpg') center 48% / cover; transform:translate3d(var(--photo-x,0px),var(--photo-y,0px),0); pointer-events:none; }
+.campus-hero::after { content:""; position:absolute; z-index:-1; inset:0; background:linear-gradient(90deg,rgba(10,35,44,.92),rgba(10,35,44,.58) 65%,rgba(10,35,44,.24)); pointer-events:none; }
+.campus-hero.is-parallax-active::before { will-change:transform; }
+@media (prefers-reduced-motion:reduce), (hover:none), (pointer:coarse) {
+  .campus-hero::before { transform:none; }
+}
 .campus-hero .eyebrow { color:#c8d9dc; }
 .campus-hero h1 { font-size:46px; font-weight:600; margin:0 0 20px; color:#fff; }
 .campus-hero p { font-size:16px; line-height:1.9; color:#e1e9e9; }
@@ -105,3 +111,29 @@ body:has(.learning-home) main { padding:0; }
 /* Course-specific surfaces keep their original spacing. */
 .learning .course-card { padding:0; }
 .learning .page-head { padding:0 0 28px; background:transparent; border-width:0 0 1px; border-radius:0; }
+
+/* Keep the campus identity, with the density of a working course directory. */
+.learning h1, .learning h2, .learning h3 { font-weight:400; letter-spacing:0; }
+.campus-hero { padding:58px 0 50px; }
+.campus-hero .eyebrow { font-size:13px; letter-spacing:.04em; }
+.campus-hero h1 { font-size:40px; }
+.campus-hero p { font-size:15px; }
+.home-course-section, .home-recent { padding:32px 0; }
+.section-heading h2 { font-size:23px; }
+.course-card:hover { transform:none; }
+.course-card-body { padding:22px; }
+.course-card h2 { font-size:21px; font-weight:400; }
+.course-card-bottom { border-top:0; padding-top:0; }
+.learning-home .course-grid { grid-template-columns:repeat(2,minmax(0,1fr)); gap:0 36px; }
+.learning-home .course-card { background:transparent; border:0; border-bottom:1px solid var(--line); }
+.learning-home .course-card-body { padding:22px 0; }
+.learning-home .course-path { margin-bottom:8px; }
+.learning-home .course-card h2 { margin-bottom:12px; }
+.learning-home #recent { border:0; background:transparent; }
+.learning-home #recent > p { margin:0; padding:18px 0 30px; }
+@media(max-width:600px) {
+  .campus-hero { padding:38px 0; }
+  .campus-hero h1 { font-size:30px; }
+  .campus-hero .eyebrow { font-size:11px; }
+  .learning-home .course-grid { grid-template-columns:1fr; }
+}

@@ -1,6 +1,9 @@
 // Shared front-end helpers: API client, session, layout, formatting, downloads.
 // Plain ES modules, no build step — edit and redeploy.
 
+// Keep the site in light mode as requested, regardless of the system preference.
+document.documentElement.dataset.theme = 'light';
+
 // Load the site theme on every route, including direct visits and soft navigation.
 if (!document.getElementById('site-theme')) {
   const link = document.createElement('link');
