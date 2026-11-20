@@ -121,7 +121,7 @@ fn mime_of(path: &str) -> &'static str {
 }
 
 /// Icon names asked for without any page linking them, plus the logo's old path.
-const ICON_ALIASES: [&str; 11] = [
+const ICON_ALIASES: [&str; 12] = [
     "favicon.ico",
     "favicon.png",
     "favicon-32x32.png",
@@ -133,9 +133,10 @@ const ICON_ALIASES: [&str; 11] = [
     "android-chrome-192x192.png",
     "android-chrome-512x512.png",
     "assets/logo.png",
+    "assets/site/logo.png",
 ];
 /// Where the background and the home-page decorations lived before site/ (cached pages, links).
-const OLD_BACKGROUNDS: [&str; 4] = ["assets/xmu-campus-background.jpg", "assets/site/background.png", "assets/site/background.webp", "assets/site/background.jpeg"];
+const OLD_BACKGROUNDS: [&str; 5] = ["assets/xmu-campus-background.jpg", "assets/site/background.jpg", "assets/site/background.png", "assets/site/background.webp", "assets/site/background.jpeg"];
 const OLD_DECORATIONS: [&str; 2] = ["assets/nanqiang-youxue.png", "assets/benbu-weijia.png"];
 
 impl Site {
