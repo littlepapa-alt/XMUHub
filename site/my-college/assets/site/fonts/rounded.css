@@ -1,7 +1,7 @@
 /* GenSen Rounded 2, SIL OFL 1.1. Disjoint subsets load only when needed. */
 @font-face {
   font-family:"Campus Rounded";
-  src:url("campus-rounded-ui.woff2") format("woff2");
+  src:url("/assets/site/fonts/campus-rounded-ui.woff2") format("woff2");
   font-weight:400;
   font-style:normal;
   font-display:swap;
@@ -9,7 +9,7 @@
 }
 @font-face {
   font-family:"Campus Rounded";
-  src:url("campus-rounded-common.woff2") format("woff2");
+  src:url("/assets/site/fonts/campus-rounded-common.woff2") format("woff2");
   font-weight:400;
   font-style:normal;
   font-display:swap;
@@ -17,7 +17,7 @@
 }
 @font-face {
   font-family:"Campus Rounded";
-  src:url("campus-rounded-extended.woff2") format("woff2");
+  src:url("/assets/site/fonts/campus-rounded-extended.woff2") format("woff2");
   font-weight:400;
   font-style:normal;
   font-display:swap;
