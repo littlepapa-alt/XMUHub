@@ -346,13 +346,74 @@ curl -sS http://127.0.0.1:8089/ >/dev/null
 
 ## 11. 当前待办
 
-1. 实测上传、审核、下载全链路；
-2. 建立 `/var/lib/xmuhub/` 和 `/opt/xmuhub/` 的定期备份，必要时异地备份到 COS；
+1. ~~实测上传、审核、下载全链路~~（2026-11-20 已完成，见第 12 节）；
+2. 建立 `/var/lib/xmuhub/` 和 `/opt/xmuhub/` 的定期备份，必要时异地备份到 COS（当前**无任何定时备份**，是最大风险）；
 3. 配置域名、HTTPS、备案和 CDN；
 4. 将手工部署恢复成可重复的标准脚本流程；
-5. 评估 COS 临时链接的有效期、上传权限和大文件并发限制。
+5. 评估 COS 临时链接的有效期、上传权限和大文件并发限制；
+6. 处理 COS 中 2 个孤儿对象（见 12.3），并考虑给放弃的上传加清理策略。
 
-## 12. 给其他智能体的直接提示词
+## 12. 全链路实测记录（2026-11-20）
+
+### 12.1 实测结论
+
+上传→审核→下载→预览链路**全部可用**，分两轮分别验证。
+
+**本地隔离实例（local 存储，18 项全过）**
+
+在 macOS 本机用 `target/debug/xmuhub` 起隔离实例（`XMUHUB_DATA=/tmp/xmuhub-test/data`、
+`XMUHUB_STORAGE=local`、端口 18089、`XMUHUB_SITE=my-college`），用脚本令牌以管理员身份走完：
+
+- 建节点：`section` 必须无 parent，`course` 必须挂在 `section` 下，资料只能挂在 `course` 上；
+- 上传三段式：`POST /api/uploads` → `PUT` 分片到目标 → `POST /api/uploads/{id}/parts/{i}`
+  （后端做 HEAD 校验大小与 SHA-256）；
+- `POST /api/resources` 建记录 → `POST /api/resources/{id}/review`（action=`approve`）发布；
+- `GET /api/resources/{id}/download` 拿链接，下载后逐字节比对一致；
+- `?peek=1` 预览计划正常；
+- 统计核对：resources +1、stored_bytes +size。
+
+**服务器隔离实例（COS 存储，8 项全过）**
+
+在服务器上用生产 `xmuhub.env`（含真实 COS 密钥）但**完全隔离**的实例
+（`XMUHUB_DATA=/tmp/xmuhub-e2e/data`、端口 18089、不碰生产数据库），上传 25MB 双分片文件：
+
+- 两片均 `PUT` 到 `sharesources-1405705998` 成功（HTTP 200）；
+- 两片 confirm 均通过后端 HEAD 校验；
+- 下载两片拼接后逐字节一致。
+
+这是**上线以来第一次真实验证 COS 上传可用**。此前 348 条资料全部来自 2026-10-20 的
+一次性导入，10-26 之后无任何新资料记录。
+
+### 12.2 实测方法要点（供复现）
+
+- 脚本令牌即管理员身份，`Authorization: Bearer <XMUHUB_SCRIPT_TOKEN>` 可绕过 CSRF 头要求；
+- 资料入参 `type_word` 必须取自 `crates/xmuhub-core/src/model.rs` 的 `TYPE_WORDS`
+  （如「课件」「往年试卷」），不能自造；`tag` 为 `T1`–`T9`；
+- `/api/meta` 的 `stats` 有 **60 秒缓存**（`STATS_TTL`），核对统计要等缓存过期；
+- 本机后台起进程会被会话回收，需用受管后台任务方式启动；
+- 节点接口 `/api/tree`、`/api/recent` 对未登录访客返回 401，属正常鉴权，不是故障。
+
+### 12.3 发现的遗留问题：COS 孤儿对象
+
+COS `blobs/` 下共 **429** 个对象，数据库只需 **427** 个分片：
+
+- 差额 2 个来自 2026-10-27 02:13，大小分别 20,971,520 与 14,268,938（合计 35,240,458 字节）；
+- 这两个对象**没有对应资料记录**，导致 `/api/meta` 的 `stored_bytes`（2,454,535,467）
+  比线上资料 size 合计（2,419,295,009）多出正好 35,240,458；
+- 复现确认：分片 PUT + confirm 成功后，若用户未提交资料表单，字节会留在 COS 而数据库无记录。
+  这是「上传中途放弃」的正常副作用，不是程序错误；
+- 线上资料数据本身**未受影响**：348 条、合计 2,419,295,009 字节，与迁移基线完全一致。
+
+处理建议：这 2 个对象对应的上传已过期（`UPLOAD_TTL` 24 小时），可在确认无人认领后删除；
+后续可考虑在 `collect_garbage` 中对已过期且无 blob 引用的 COS 对象做清理。
+
+### 12.4 本次实测的清理与影响
+
+- 所有测试上传的 COS 对象均已删除，复核「今日(11-20)残留 = 0」；
+- 服务器临时实例已停止并删除 `/tmp/xmuhub-e2e`，生产 `xmuhub.service` 未重启、未改动；
+- 生产数据未做任何写入，唯一变化是实测下载使 `downloads` 计数从 18 增至 23。
+
+## 13. 给其他智能体的直接提示词
 
 你正在维护一个基于 XMUHub 的吉林大学电子科学与工程学院资料共享网站。请先阅读本文件、AGENTS.md、docs/development.md 和 docs/principles.md，再查看 git status。
 
