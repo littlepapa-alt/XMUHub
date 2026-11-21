@@ -29,7 +29,8 @@ echo "部署版本：$REV$DIRTY → $SSH_USER@$SSH_HOST:$REMOTE_BASE/web"
 
 STAGE="$(mktemp -d)"; trap 'rm -rf "$STAGE"' EXIT
 mkdir -p "$STAGE/_site"
-cp -R "$SITE_DIR/" "$STAGE/_site/"
+# 站点内容直接放 _site/ 根（site.json 必须在 _site/site.json，二进制按此定位）。
+cp -R "$SITE_DIR/." "$STAGE/_site/"
 COPYFILE_DISABLE=1 tar --no-xattrs --no-mac-metadata -czf "$STAGE/web.tar.gz" -C web . -C "$STAGE" _site
 echo "打包完成：$(du -h "$STAGE/web.tar.gz" | cut -f1)"
 
