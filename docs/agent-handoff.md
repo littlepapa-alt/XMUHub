@@ -349,7 +349,7 @@ curl -sS http://127.0.0.1:8089/ >/dev/null
 1. ~~实测上传、审核、下载全链路~~（2026-11-20 已完成，见第 12 节）；
 2. 建立 `/var/lib/xmuhub/` 和 `/opt/xmuhub/` 的定期备份，必要时异地备份到 COS（当前**无任何定时备份**，是最大风险）；
 3. 配置域名、HTTPS、备案和 CDN；
-4. 将手工部署恢复成可重复的标准脚本流程；
+4. 将手工部署恢复成可重复的标准脚本流程（2026-11-21 部分推进：网页部署已修复并验证，见第 13 节；后端二进制部署仍是手工流程，本次步骤已记录在 13.2）；
 5. 评估 COS 临时链接的有效期、上传权限和大文件并发限制；
 6. 处理 COS 中 2 个孤儿对象（见 12.3），并考虑给放弃的上传加清理策略。
 
@@ -413,7 +413,34 @@ COS `blobs/` 下共 **429** 个对象，数据库只需 **427** 个分片：
 - 服务器临时实例已停止并删除 `/tmp/xmuhub-e2e`，生产 `xmuhub.service` 未重启、未改动；
 - 生产数据未做任何写入，唯一变化是实测下载使 `downloads` 计数从 18 增至 23。
 
-## 13. 给其他智能体的直接提示词
+## 13. 首屏性能优化记录（2026-11-21）
+
+### 13.1 改动内容（提交 bdfb051、f05b9b0、0010af8）
+
+- 图片压缩（site/my-college/assets/site/）：院徽 logo.png 758,094B → logo.webp 18,400B（256×256，页面最大显示 76px）；背景 background.jpg 194,548B → background.webp 87,588B（1200×500，q40，压着深色渐变遮罩不可辨）；校徽 university-logo.jpg 276,409B → 22,960B（256×256）。原图备份在本机 `/tmp/college-perf-20261120/originals/`（临时目录，不保证长期保留）。
+- 西文字体替身（site/my-college/assets/fonts/）：theme.css 已把全部文字字体设为 Campus Rounded，app.css 声明的 4 个 Inter/Source Serif 西文 woff2 从不渲染但会被下载。用站点覆盖层放同名空 cmap 替身（fontTools 子集化，family 名保留、OS/2 完整），合计 89,736B → 3,100B。未改 web/ 共用代码。
+- 字体链长缓存：theme.css 的 `@import` 与 rounded.css 的 3 个 `url()` 原为相对路径，不被 versioning.rs 版本化（只处理绝对路径与 JS 相对 import），导致 rounded.css 与圆体 woff2 永远 no-cache。改为绝对路径后整条链获得 `?v=` 与一年 immutable。JS 相对 import 本就被版本化，未动。
+- 旧路径兼容（f05b9b0，**改了共用代码 web.rs，属必要的最小改动**）：删除 web/assets/site/ 下两张无任何引用的上游通用兜底图（logo.png 673B、background.jpg 18KB），并把 `assets/site/logo.png`、`assets/site/background.jpg` 补进 ICON_ALIASES / OLD_BACKGROUNDS。否则本站改用 webp 后，持旧缓存的页面请求旧路径会落到上游通用图或 404。别名只填不存在的路径，其他站点不受影响（xmu 站点有自己的图）。
+- about.html 院徽改用 `{{site.logo}}` 占位符，不再硬编码扩展名。
+- 部署脚本修复（0010af8）：deploy-web.sh 原把站点拷成 `_site/my-college/`，而 Site::locate 要求 `_site/site.json`，导致服务启动失败自动回滚。改为 `cp -R "$SITE_DIR/." "$STAGE/_site/"`。10-26 的部署之所以成功，是当时包内 _site/ 根直接是站点内容。
+
+### 13.2 部署过程与回退点
+
+- 网页：`bash scripts/deploy-web.sh`（自动维护公告 → 原子切换 → 健康检查 → 撤公告），版本 0010af8。第一次部署因上述打包 bug 失败并自动回滚，网站未受影响；修复后重部署成功。
+- 后端二进制（web.rs 别名改动必须换二进制）：在服务器 /tmp/xmuhub-build.1IAupk（源码与 git HEAD 逐文件哈希一致，含 668MB 增量编译缓存）只同步修改的 web.rs，用 xmuhub-alinux3 镜像按 build-alinux3.ps1 同参数（x86-64-v3、fat LTO、clang/lld）增量编译出 run.new；先以隔离数据目录 + local 存储在 18091 端口冒烟通过，再原子替换 /opt/xmuhub/run 并重启，健康检查通过。DEPLOYED 已记录 backend=perf-alias build 20261121-214632 (f05b9b0)。
+- 回退点（服务器 /opt/xmuhub/releases/）：`run-before-perf-20261121-214435`（旧二进制）、`run-before-perf-swap-20261121-214632`（切换前再备份）、`web-before-perf-20261121-214435.tar.gz`（旧网页+DEPLOYED）。回退网页按第 2 节流程；回退二进制直接 cp 回 /opt/xmuhub/run 并重启。注意旧二进制不认新 webp 图，回退二进制需同时回退网页。
+- 失败包 web.bad 与临时脚本已清理。
+
+### 13.3 线上复测结果
+
+- 首页真实冷加载体积约 367KB（旧版约 1.53MB，且旧图片全部 no-cache 无版本号）：壳 637B + JS/CSS 约 50KB + 院徽 18.4KB + 背景 87.6KB + 圆体 ui 子集 204.8KB + rounded.css 22.2KB。首页用字全部落在 ui 子集，common/extended 子集仅生僻字页面按需下载。
+- 全部静态引用带 `?v=` 且命中 `public, max-age=31536000, immutable`；错误版本号回退 no-cache；页面壳回访 304 零字节。回访流量≈0。
+- 旧路径 logo.png/background.jpg/background.png/background.jpeg/xmu-campus-background.jpg 与 favicon 别名全部 200 且返回本站新图。
+- 10 人并发冷加载首页（14 资源/人）：总耗时 11.5s，p50 10.8s，p95 11.5s（优化前 758KB 院徽 20 并发 p50 31s）。带宽仍是约 4Mbps 瓶颈，200 人同时冷加载仍需约 3 分钟量级，但回访与 COS 直连下载不占服务器带宽。
+- COS 链路：/api/resources/712/download 签名链接直连下载 235,651B，SHA256 与数据库记录逐字节一致。数据完好：348 资料、2,454,535,467B、13 用户，与部署前基线一致；本次验证使 downloads 23→24。
+- check-web、check-rules、cargo clippy（零警告）、cargo test（18/18）均通过。
+
+## 14. 给其他智能体的直接提示词
 
 你正在维护一个基于 XMUHub 的吉林大学电子科学与工程学院资料共享网站。请先阅读本文件、AGENTS.md、docs/development.md 和 docs/principles.md，再查看 git status。
 
