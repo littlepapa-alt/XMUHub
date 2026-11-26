@@ -347,7 +347,7 @@ curl -sS http://127.0.0.1:8089/ >/dev/null
 ## 11. 当前待办
 
 1. ~~实测上传、审核、下载全链路~~（2026-11-20 已完成，见第 12 节）；
-2. 建立 `/var/lib/xmuhub/` 和 `/opt/xmuhub/` 的定期备份，必要时异地备份到 COS（当前**无任何定时备份**，是最大风险）；
+2. ~~建立定期备份~~（2026-11-26 已完成服务器侧，见 13.5；本机异地副本的 launchd 需用户终端激活一次）；可再考虑加一份 COS 异地副本；
 3. 配置域名、HTTPS、备案和 CDN；
 4. 将手工部署恢复成可重复的标准脚本流程（2026-11-21 部分推进：网页部署已修复并验证，见第 13 节；后端二进制部署仍是手工流程，本次步骤已记录在 13.2）；
 5. 评估 COS 临时链接的有效期、上传权限和大文件并发限制；
@@ -449,6 +449,13 @@ COS `blobs/` 下共 **429** 个对象，数据库只需 **427** 个分片：
 - 验证码限流：同邮箱冷却 60s，每 IP 每小时 20 次，全站每天 600 次；验证码 30 分钟有效。
 - 注意：QQ/163 发往 Gmail 可能进垃圾箱，属跨服务商信誉问题，非程序缺陷。
 - 同日下载链路实测：单人 COS 直连 13Mbps（11.6MB/7s）；30 并发全部成功；服务器数据中心侧单连接 541Mbps、10 并发聚合 2.9Gbps；下载期间服务 CPU 0%。用户规模已达 22 人（11-24 为 13 人）。
+
+### 13.5 每日自动备份（2026-11-26 已上线）
+
+- 服务器侧：`scripts/backup-xmuhub.sh`（已装到 /opt/xmuhub/backup-xmuhub.sh），cron 每天 03:30 备份 redb 数据库 + xmuhub.env + DEPLOYED 到 `/var/backups/xmuhub/xmuhub-<时间戳>.tar.gz`，保留 7 份，tar -tzf 校验完整性，日志 /var/backups/xmuhub/backup.log。首份 88KB。资料文件本体在 COS 多副本，不必备份。redb 4.3 崩溃一致性，凌晨低峰直接 cp 安全。
+- 本机异地副本：`scripts/sync-backups-local.sh` 用 rsync 拉归档到 `~/Documents/ChatGPT/项目/college-materials-backups/`（保留 14 份），服务器不可达时静默跳过。LaunchAgent plist 已放 `~/Library/LaunchAgents/com.lyb.xmuhub-backup-sync.plist`（每小时 + 登录时），但智能体会话内 launchctl bootstrap 一律 EIO（环境限制，最简 plist 同样失败），**需用户在自己终端跑一次**：`launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.lyb.xmuhub-backup-sync.plist`。激活前本机副本靠手动跑同步脚本。
+- /var/backups/xmuhub/ 里另有 10 月份手工 redb 快照（before-*），历史遗留，保留不动。
+- 恢复方法：停服务 → 解开归档取 xmuhub.redb 覆盖 /var/lib/xmuhub/data/（注意 xmuhub 所有权）→ 起服务；配置同理覆盖 /opt/xmuhub/xmuhub.env。
 
 ## 14. 给其他智能体的直接提示词
 
