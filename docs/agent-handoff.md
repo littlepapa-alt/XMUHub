@@ -440,6 +440,16 @@ COS `blobs/` 下共 **429** 个对象，数据库只需 **427** 个分片：
 - COS 链路：/api/resources/712/download 签名链接直连下载 235,651B，SHA256 与数据库记录逐字节一致。数据完好：348 资料、2,454,535,467B、13 用户，与部署前基线一致；本次验证使 downloads 23→24。
 - check-web、check-rules、cargo clippy（零警告）、cargo test（18/18）均通过。
 
+### 13.4 注册邮件双通道实测（2026-11-26）
+
+- 测试邮箱 longyb1321@gmail.com，用户确认两封验证码邮件均收到（含垃圾箱检查）。
+- 主通道：POST /api/auth/code（CSRF 头 x-xmuhub）→ smtp.qq.com:465，发件人 2315128039@qq.com，1.4s 投递成功，无警告。
+- 备用通道：临时把 SMTP_HOST/SMTP_PORT 指向 127.0.0.1:1 触发主通道失败，日志链 `SMTP delivery failed sender=1` → `verification mail accepted by backup SMTP sender=2`（smtp.163.com），全程 1.2s，接口仍返回 sent:true。MAIL_BACKUP_FROM 为空时自动用 SMTP_BACKUP_USER 作发件人。
+- 测试脚本带 trap 自动恢复：配置备份 /opt/xmuhub/releases/xmuhub.env-before-backup-test-20261126-102426，测后主通道已恢复并验证公网 200。
+- 验证码限流：同邮箱冷却 60s，每 IP 每小时 20 次，全站每天 600 次；验证码 30 分钟有效。
+- 注意：QQ/163 发往 Gmail 可能进垃圾箱，属跨服务商信誉问题，非程序缺陷。
+- 同日下载链路实测：单人 COS 直连 13Mbps（11.6MB/7s）；30 并发全部成功；服务器数据中心侧单连接 541Mbps、10 并发聚合 2.9Gbps；下载期间服务 CPU 0%。用户规模已达 22 人（11-24 为 13 人）。
+
 ## 14. 给其他智能体的直接提示词
 
 你正在维护一个基于 XMUHub 的吉林大学电子科学与工程学院资料共享网站。请先阅读本文件、AGENTS.md、docs/development.md 和 docs/principles.md，再查看 git status。
