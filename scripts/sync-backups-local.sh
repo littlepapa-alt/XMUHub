@@ -7,7 +7,8 @@ set -u
 KEY="$HOME/.ssh/macbookpro.pem"
 HOST=root@49.232.142.58
 REMOTE=/var/backups/xmuhub
-DEST="$HOME/Documents/ChatGPT/项目/college-materials-backups"
+# 注意：不要放 ~/Documents 等 TCC 保护目录，launchd 后台任务无权读取。
+DEST="$HOME/.xmuhub-backup"
 LOG="$DEST/sync.log"
 KEEP=14
 

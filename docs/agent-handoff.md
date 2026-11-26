@@ -453,7 +453,7 @@ COS `blobs/` 下共 **429** 个对象，数据库只需 **427** 个分片：
 ### 13.5 每日自动备份（2026-11-26 已上线）
 
 - 服务器侧：`scripts/backup-xmuhub.sh`（已装到 /opt/xmuhub/backup-xmuhub.sh），cron 每天 03:30 备份 redb 数据库 + xmuhub.env + DEPLOYED 到 `/var/backups/xmuhub/xmuhub-<时间戳>.tar.gz`，保留 7 份，tar -tzf 校验完整性，日志 /var/backups/xmuhub/backup.log。首份 88KB。资料文件本体在 COS 多副本，不必备份。redb 4.3 崩溃一致性，凌晨低峰直接 cp 安全。
-- 本机异地副本：`scripts/sync-backups-local.sh` 用 rsync 拉归档到 `~/Documents/ChatGPT/项目/college-materials-backups/`（保留 14 份），服务器不可达时静默跳过。LaunchAgent plist 已放 `~/Library/LaunchAgents/com.lyb.xmuhub-backup-sync.plist`（每小时 + 登录时），但智能体会话内 launchctl bootstrap 一律 EIO（环境限制，最简 plist 同样失败），**需用户在自己终端跑一次**：`launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.lyb.xmuhub-backup-sync.plist`。激活前本机副本靠手动跑同步脚本。
+- 本机异地副本：`scripts/sync-backups-local.sh` 用 rsync 拉归档到 `~/.xmuhub-backup/`（保留 14 份），服务器不可达时静默跳过。**不能放 ~/Documents 等 TCC 保护目录**——launchd 后台任务读取会被 macOS 隐私保护拒绝（Operation not permitted，exit 126），首次部署踩过此坑，已迁到 ~/.xmuhub-backup。运行副本在 ~/.xmuhub-backup/sync.sh。LaunchAgent plist 在 `~/Library/LaunchAgents/com.lyb.xmuhub-backup-sync.plist`（每小时 + 登录时）。智能体会话内 launchctl bootstrap 一律 EIO（环境限制），注册/重载需用户在自己终端跑：`launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.lyb.xmuhub-backup-sync.plist`（改过 plist 后先 bootout 再 bootstrap）。
 - /var/backups/xmuhub/ 里另有 10 月份手工 redb 快照（before-*），历史遗留，保留不动。
 - 恢复方法：停服务 → 解开归档取 xmuhub.redb 覆盖 /var/lib/xmuhub/data/（注意 xmuhub 所有权）→ 起服务；配置同理覆盖 /opt/xmuhub/xmuhub.env。
 
